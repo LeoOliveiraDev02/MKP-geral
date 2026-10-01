@@ -3,14 +3,13 @@
  * @description UC12 alt. 2 (RN19: bloqueio após 3 falhas) + UC13 logout
  * (denylist de JWT). E-mail inexistente conta sem revelar nada (401 genérico).
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
 
-const { startServer, api } = require('../helpers');
+const { startServer, asSystem, api } = require('../helpers');
 
 const EMAIL = 'alvo@test.com';
 const SENHA = 'Forte@123';
@@ -62,7 +61,7 @@ describe('RN19 + UC13 — Segurança de sessão', async () => {
   it('fim da janela desbloqueia (backdate determinístico, sem espera)', async () => {
     const BloqueioLoginDAO = require('../../src/dao/BloqueioLoginDAO');
     const passado = new Date(Date.now() - 1000).toISOString();
-    await BloqueioLoginDAO.salvar({ email: EMAIL, tentativas: 3, bloqueadoAte: passado });
+    await asSystem(() => BloqueioLoginDAO.salvar({ email: EMAIL, tentativas: 3, bloqueadoAte: passado }));
 
     const ok = await api(base, 'POST', '/api/auth/login', { body: { email: EMAIL, senha: SENHA } });
     assert.equal(ok.status, 200);

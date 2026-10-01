@@ -4,13 +4,13 @@
  * (joins + paginação + soft delete).
  * (Camada DAO — as regras de negócio vivem nas entidades de `src/domain`.)
  * Retornos preservam o formato legado (snake_case + `imagens` / `imagem_principal`).
- * Métodos síncronos com `tx` opcional.
+ * Métodos assíncronos com `tx` opcional.
  *
  * Correção em relação ao SQL cru original: a contagem paginada com `search`
  * agora faz JOIN com Categoria (o SQL antigo referenciava `c.nome` no COUNT sem JOIN).
  */
 
-const { eq, and, or, like, desc, asc, sql, count, lt, inArray } = require('drizzle-orm');
+const { eq, and, or, ilike, desc, asc, sql, count, lt, inArray } = require('drizzle-orm');
 const { getDb } = require('../db');
 const { anuncios, usuarios, categorias, enderecos, imagens } = require('../db/schema');
 
@@ -24,23 +24,23 @@ function toImagemLegada(row) {
 }
 
 class AnuncioDAO {
-  static create({ anuncianteId, categoriaId, enderecoId, nome, descricao, preco }, client) {
+  static async create({ anuncianteId, categoriaId, enderecoId, nome, descricao, preco }, client) {
     const database = client || getDb();
-    const result = database
+    const [row] = await database
       .insert(anuncios)
       .values({ anuncianteId, categoriaId, enderecoId, nome, descricao, preco })
-      .run();
-    return Number(result.lastInsertRowid);
+      .returning({ id: anuncios.id });
+    return row.id;
   }
 
-  static findById(id, includeInactive = false, client) {
+  static async findById(id, includeInactive = false, client) {
     const database = client || getDb();
     const numericId = Number(id);
 
     const conditions = [eq(anuncios.id, numericId)];
     if (!includeInactive) conditions.push(eq(anuncios.status, 'ATIVO'));
 
-    const ad = database
+    const [ad] = await database
       .select({
         id: anuncios.id,
         nome: anuncios.nome,
@@ -69,23 +69,22 @@ class AnuncioDAO {
       .innerJoin(categorias, eq(anuncios.categoriaId, categorias.id))
       .innerJoin(enderecos, eq(anuncios.enderecoId, enderecos.id))
       .where(and(...conditions))
-      .get();
+      .limit(1);
 
     if (!ad) return null;
 
-    const imageRows = database
+    const imageRows = await database
       .select()
       .from(imagens)
       .where(eq(imagens.anuncioId, numericId))
       // PRINCIPAL primeiro (corrige o `ORDER BY tipo DESC` legado, que na prática
       // retornava SECUNDARIA antes por ordem alfabética). Depois, ordem ascendente.
-      .orderBy(sql`CASE WHEN ${imagens.tipo} = 'PRINCIPAL' THEN 0 ELSE 1 END`, asc(imagens.ordem))
-      .all();
+      .orderBy(sql`CASE WHEN ${imagens.tipo} = 'PRINCIPAL' THEN 0 ELSE 1 END`, asc(imagens.ordem));
 
     return { ...ad, imagens: imageRows.map(toImagemLegada) };
   }
 
-  static findAll(
+  static async findAll(
     { page = 1, limit = 10, categoryId, search, anuncianteId, status = 'ATIVO' } = {},
     client
   ) {
@@ -99,24 +98,23 @@ class AnuncioDAO {
       const pattern = `%${search}%`;
       conditions.push(
         or(
-          like(anuncios.nome, pattern),
-          like(anuncios.descricao, pattern),
-          like(categorias.nome, pattern)
+          ilike(anuncios.nome, pattern),
+          ilike(anuncios.descricao, pattern),
+          ilike(categorias.nome, pattern)
         )
       );
     }
     const whereClause = and(...conditions);
 
-    const [{ value: total }] = database
+    const [{ value: total }] = await database
       .select({ value: count() })
       .from(anuncios)
       .innerJoin(usuarios, eq(anuncios.anuncianteId, usuarios.id))
       .innerJoin(categorias, eq(anuncios.categoriaId, categorias.id))
       .innerJoin(enderecos, eq(anuncios.enderecoId, enderecos.id))
-      .where(whereClause)
-      .all();
+      .where(whereClause);
 
-    const ads = database
+    const ads = await database
       .select({
         id: anuncios.id,
         nome: anuncios.nome,
@@ -139,19 +137,18 @@ class AnuncioDAO {
       .innerJoin(categorias, eq(anuncios.categoriaId, categorias.id))
       .innerJoin(enderecos, eq(anuncios.enderecoId, enderecos.id))
       .where(whereClause)
-      .orderBy(desc(anuncios.dataPublicacao))
+      // id como desempate do timestamp de 1s (ordem estável na paginação)
+      .orderBy(desc(anuncios.dataPublicacao), desc(anuncios.id))
       .limit(limit)
-      .offset(offset)
-      .all();
+      .offset(offset);
 
     const adIds = ads.map((a) => a.id);
     let principalByAd = new Map();
     if (adIds.length > 0) {
-      const rows = database
+      const rows = await database
         .select()
         .from(imagens)
-        .where(and(inArray(imagens.anuncioId, adIds), eq(imagens.tipo, 'PRINCIPAL')))
-        .all();
+        .where(and(inArray(imagens.anuncioId, adIds), eq(imagens.tipo, 'PRINCIPAL')));
       principalByAd = new Map(rows.map((r) => [r.anuncioId, r.url]));
     }
 
@@ -169,53 +166,49 @@ class AnuncioDAO {
     };
   }
 
-  static update(id, { categoriaId, enderecoId, nome, descricao, preco }, client) {
+  static async update(id, { categoriaId, enderecoId, nome, descricao, preco }, client) {
     const database = client || getDb();
-    database
+    await database
       .update(anuncios)
       .set({ categoriaId, enderecoId, nome, descricao, preco })
-      .where(eq(anuncios.id, Number(id)))
-      .run();
+      .where(eq(anuncios.id, Number(id)));
     return true;
   }
 
   /** RS09: soft delete → lixeira. */
-  static moveToLixeira(id, client) {
+  static async moveToLixeira(id, client) {
     const database = client || getDb();
-    database
+    await database
       .update(anuncios)
       .set({ status: 'EM_LIXEIRA', dataRemocao: new Date().toISOString() })
-      .where(eq(anuncios.id, Number(id)))
-      .run();
+      .where(eq(anuncios.id, Number(id)));
     return true;
   }
 
-  static restoreFromLixeira(id, client) {
+  static async restoreFromLixeira(id, client) {
     const database = client || getDb();
-    database
+    await database
       .update(anuncios)
       .set({ status: 'ATIVO', dataRemocao: null })
-      .where(eq(anuncios.id, Number(id)))
-      .run();
+      .where(eq(anuncios.id, Number(id)));
     return true;
   }
 
   /** RS09: hard delete de EM_LIXEIRA há +30 dias (CASCADE limpa imagens). */
-  static cleanupLixeira(client) {
+  static async cleanupLixeira(client) {
     const database = client || getDb();
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
 
-    const expired = database
+    const expired = await database
       .select({ id: anuncios.id })
       .from(anuncios)
-      .where(and(eq(anuncios.status, 'EM_LIXEIRA'), lt(anuncios.dataRemocao, cutoff.toISOString())))
-      .all();
+      .where(and(eq(anuncios.status, 'EM_LIXEIRA'), lt(anuncios.dataRemocao, cutoff.toISOString())));
 
     if (expired.length === 0) return 0;
 
     const ids = expired.map((a) => a.id);
-    database.delete(anuncios).where(inArray(anuncios.id, ids)).run();
+    await database.delete(anuncios).where(inArray(anuncios.id, ids));
     return ids.length;
   }
 }

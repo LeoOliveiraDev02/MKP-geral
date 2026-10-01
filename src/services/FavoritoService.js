@@ -7,12 +7,10 @@
 const AnuncioDAO = require('../dao/AnuncioDAO');
 const FavoritoDAO = require('../dao/FavoritoDAO');
 const logger = require('../utils/logger');
+const { isUniqueViolation } = require('../db');
+const { runAsSystem } = require('../db/context');
 const { Favorito } = require('../domain/factories');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../errors/AppError');
-
-function isUniqueViolation(error) {
-  return String((error && error.message) || '').includes('UNIQUE constraint failed');
-}
 
 class FavoritoService {
   /**
@@ -68,7 +66,8 @@ class FavoritoService {
 
   /** UC11 alt. 3: remover direto pela lista, com propriedade. */
   static async remove({ clienteId, id }) {
-    const fav = await FavoritoDAO.findById(id);
+    // Pré-checagem como sistema: distingue 404 de 403 (RLS esconderia o alheio)
+    const fav = await runAsSystem(() => FavoritoDAO.findById(id));
     if (!fav) {
       throw new NotFoundError('Favorito não encontrado.');
     }

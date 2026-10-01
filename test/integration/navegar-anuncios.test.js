@@ -4,7 +4,6 @@
  * (próxima/anterior/fim da lista), filtro por categoria e catálogo vazio.
  * Garantia: só ATIVOS navegáveis, cada item com imagem principal, nome e preço.
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');

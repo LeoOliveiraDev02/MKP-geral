@@ -5,6 +5,7 @@
  */
 
 const EnderecoDAO = require('../dao/EnderecoDAO');
+const { runAsSystem } = require('../db/context');
 const { Endereco } = require('../domain/factories');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../errors/AppError');
 
@@ -65,7 +66,8 @@ class EnderecoService {
     }
     enderecoEnt.zona = upperZona;
 
-    const existingAddress = await EnderecoDAO.findById(id);
+    // Pré-checagem como sistema: distingue 404 de 403 (RLS esconderia o alheio)
+    const existingAddress = await runAsSystem(() => EnderecoDAO.findById(id));
     if (!existingAddress) {
       throw new NotFoundError('Endereço não encontrado.');
     }
@@ -99,7 +101,8 @@ class EnderecoService {
   }
 
   static async delete({ userId, id }) {
-    const existingAddress = await EnderecoDAO.findById(id);
+    // Pré-checagem como sistema: distingue 404 de 403 (RLS esconderia o alheio)
+    const existingAddress = await runAsSystem(() => EnderecoDAO.findById(id));
     if (!existingAddress) {
       throw new NotFoundError('Endereço não encontrado.');
     }

@@ -1,7 +1,7 @@
 /**
  * @file server.js
  * @description Ponto de entrada (entrypoint) da aplicação.
- * Este script carrega as variáveis de ambiente, inicializa o banco de dados SQLite,
+ * Este script carrega as variáveis de ambiente, inicializa o banco de dados PostgreSQL,
  * inicia o servidor HTTP do Express e configura o encerramento gracioso (graceful shutdown)
  * para evitar perda de dados e conexões pendentes em caso de parada.
  */
@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 3000;
  */
 async function startServer() {
   try {
-    // 1. Inicializa o Banco de Dados SQLite (cria tabelas DDL e insere categorias iniciais se necessário)
+    // 1. Inicializa o PostgreSQL (role da API, tabelas, policies RLS e categorias iniciais se necessário)
     await initializeDatabase();
 
     // 2. Inicia o servidor HTTP do Express para ouvir as requisições na porta especificada
@@ -48,9 +48,9 @@ async function startServer() {
       logger.warn(`Sinal ${signal} recebido. Encerrando servidor graciosamente...`);
       
       // Fecha o servidor HTTP para novas conexões
-      server.close(() => {
+      server.close(async () => {
         logger.info('Servidor HTTP encerrado.');
-        closeDatabase();
+        await closeDatabase();
         // Encerra o processo do Node de forma limpa (código de saída 0 = sucesso)
         process.exit(0);
       });
@@ -63,7 +63,7 @@ async function startServer() {
     process.on('SIGINT', () => shutdown('SIGINT'));
 
   } catch (error) {
-    // Caso ocorra qualquer erro na inicialização (ex: falha ao conectar no SQLite)
+    // Caso ocorra qualquer erro na inicialização (ex: falha ao conectar no PostgreSQL)
     logger.error('Falha crítica ao iniciar o servidor', error);
     process.exit(1); // Encerra o processo indicando falha crítica (código de saída 1)
   }

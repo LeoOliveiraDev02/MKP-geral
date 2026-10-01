@@ -3,13 +3,12 @@
  * @description UC3 — Recuperação de senha (integração): solicitar código,
  * redefinir, invalidação, expiração e anti-enumeração. E-mail stubado.
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { startServer, api, stubEmail } = require('../helpers');
+const { startServer, asSystem, api, stubEmail } = require('../helpers');
 
 const EMAIL = 'esquecido@test.com';
 const SENHA = 'Forte@123';
@@ -34,7 +33,7 @@ describe('UC3 — Recuperação de senha', async () => {
 
     // DAOs no mesmo processo enxergam o mesmo banco temporário
     const UsuarioDAO = require('../../src/dao/UsuarioDAO');
-    usuarioId = (await UsuarioDAO.findByEmail(EMAIL)).id;
+    usuarioId = (await asSystem(() => UsuarioDAO.findByEmail(EMAIL))).id;
   });
 
   after(async () => {
@@ -88,7 +87,7 @@ describe('UC3 — Recuperação de senha', async () => {
   it('rejeita código expirado', async () => {
     const RecuperacaoSenhaDAO = require('../../src/dao/RecuperacaoSenhaDAO');
     const passado = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    await RecuperacaoSenhaDAO.create({ usuarioId, codigo: '123456', expiraEm: passado });
+    await asSystem(() => RecuperacaoSenhaDAO.create({ usuarioId, codigo: '123456', expiraEm: passado }));
 
     const { status, body } = await api(base, 'POST', '/api/auth/reset-password', {
       body: { email: EMAIL, codigo: '123456', novaSenha: 'Outra@123' },

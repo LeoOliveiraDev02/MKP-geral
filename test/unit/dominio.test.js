@@ -2,7 +2,6 @@
  * @file dominio.test.js
  * @description Unitários das entidades de domínio (sem banco, sem HTTP).
  */
-process.env.DATABASE_PATH = ':memory:';
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');

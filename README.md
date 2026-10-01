@@ -2,7 +2,7 @@
 
 > **Agrostand** é um marketplace agrícola projetado para aproximar produtores rurais (anunciantes) e compradores de forma direta e sem intermediários, permitindo negociações diretas por canais externos (WhatsApp).
 
-Este repositório contém a **API RESTful** do sistema Agrostand, desenvolvida em **Node.js** com **Express** e **SQLite**. A arquitetura do projeto segue princípios de **Clean Architecture** e **DDD (Domain-Driven Design)**, separando a lógica de negócios das tecnologias de persistência.
+Este repositório contém a **API RESTful** do sistema Agrostand, desenvolvida em **Node.js** com **Express** e **PostgreSQL**. A arquitetura do projeto segue princípios de **Clean Architecture** e **DDD (Domain-Driven Design)**, separando a lógica de negócios das tecnologias de persistência.
 
 ---
 
@@ -11,7 +11,7 @@ Este repositório contém a **API RESTful** do sistema Agrostand, desenvolvida e
 O projeto utiliza um conjunto de tecnologias modernas e robustas para garantir performance e segurança:
 
 * **Core**: [Node.js](https://nodejs.org/) & [Express](https://expressjs.com/) (Framework HTTP)
-* **Banco de Dados**: [SQLite](https://www.sqlite.org/) via [Drizzle ORM](https://orm.drizzle.team/) (driver `better-sqlite3`, migrations com `drizzle-kit`)
+* **Banco de Dados**: [PostgreSQL](https://www.postgresql.org/) via [Drizzle ORM](https://orm.drizzle.team/) (driver `node-postgres`), com **Row-Level Security** (RLS)
 * **Segurança**:
   * Criptografia de senhas usando [bcryptjs](https://github.com/dcodeIO/bcrypt.js)
   * Autenticação e autorização via [JSON Web Tokens (JWT)](https://jwt.io/)
@@ -30,7 +30,7 @@ src/
 ├── config/             # Compat de banco (shim p/ `src/db`) e Multer (multer.js)
 ├── controllers/        # Thin adapters HTTP (extraem entrada, chamam services, montam o envelope; sem regra de negócio)
 ├── dao/                # DAOs via Drizzle query builder (sem SQL cru; aceitam `tx` p/ transações)
-├── db/                 # Drizzle ORM: schema.js (tabelas), index.js (conexão better-sqlite3, DDL idempotente e seed)
+├── db/                 # Drizzle ORM: schema.js (tabelas), schema.sql (DDL + policies RLS), context.js (contexto RLS), index.js (pool pg, boot e seed)
 ├── domain/             # Model: entidades de domínio (Usuario, Cliente, Anunciante, Anuncio, Produto, ...) usadas pelos services p/ regras e transições de estado; factories.js monta entidades a partir das linhas do banco
 ├── errors/             # Exceções de negócio (AppError 400/401/403/404) lançadas pelos services e traduzidas pelo errorMiddleware
 ├── middlewares/        # Middlewares do Express (Validação de JWT, Logs e Captura Global de Erros)
@@ -41,11 +41,22 @@ src/
 └── server.js           # Ponto de entrada (Entrypoint), escuta de portas e encerramento gracioso
 ```
 
-Migrations versionadas do Drizzle ficam em `drizzle/` (geradas com `npm run db:generate`).
+Migrations do Drizzle (pg) ficam em `drizzle/`; as antigas do SQLite estão em `drizzle-sqlite-legado/`.
 
-> **Transações (better-sqlite3 é síncrono):** todo I/O assíncrono (bcrypt, upload/e-mail) ocorre
-> fora de `db.transaction((tx) => ...)`. Dentro da transação, os DAOs são chamados de forma
-> síncrona com o cliente `tx` (ex: `UsuarioDAO.create(dados, tx)`).
+> **Transações:** `await getDb().transaction(async (tx) => ...)`, passando `tx` aos DAOs
+> (ex: `await UsuarioDAO.create(dados, tx)`). bcrypt, upload e e-mail ficam fora da transação.
+
+### Row-Level Security (RLS)
+- A API conecta como `agrostand_app` (`DATABASE_URL`), um role **sem superuser/BYPASSRLS**;
+  as tabelas pertencem ao admin (`DATABASE_ADMIN_URL`), usado só no boot.
+- Cada conexão do pool recebe `app.user_id` (usuário do JWT, via `authMiddleware` +
+  AsyncLocalStorage) e `app.system`. As policies em `src/db/schema.sql` garantem, no banco:
+  - **Usuario / Endereco / Favorito**: cada um lê e altera só o que é seu (vendedor e endereço
+    de anúncio visível ficam legíveis, pois aparecem no anúncio público).
+  - **Anuncio / Imagem**: `ATIVO` é público; lixeira só para o dono; escrita só pelo anunciante.
+  - **Categoria**: somente leitura. **RecuperacaoSenha / TentativaLogin / TokenRevogado**: só sistema.
+- Fluxos sem usuário (login, cadastro, recuperação, denylist, purga CRON) usam `runAsSystem`.
+  Pré-checagens de propriedade também, para manter 403 (em vez de 404) em recurso alheio.
 
 ---
 
@@ -63,11 +74,15 @@ npm install
 ```
 
 ### 2. Configurar as variáveis de ambiente
-Crie um arquivo `.env` na raiz do projeto (use o arquivo `.env.example` como base):
+Requer PostgreSQL (testado no 18). Crie um arquivo `.env` na raiz do projeto (use o arquivo `.env.example` como base):
 ```env
 PORT=3000
 NODE_ENV=development
 JWT_SECRET=sua_chave_secreta_jwt_aqui
+
+# Role da API (criado no boot) e admin (dono das tabelas, só no boot)
+DATABASE_URL=postgres://agrostand_app:senha_forte@localhost:5432/agrostand
+DATABASE_ADMIN_URL=postgres://postgres:senha_do_admin@localhost:5432/agrostand
 
 # Configurações do SMTP de E-mail (Gmail Exemplo)
 SMTP_HOST=smtp.gmail.com
@@ -88,11 +103,11 @@ O servidor será iniciado na porta especificada (padrão `3000`). Você verá a 
 ### 4. Migrations do banco (Drizzle Kit)
 ```bash
 npm run db:generate  # gera SQL em ./drizzle a partir de src/db/schema.js
-npm run db:push      # aplica o schema direto no SQLite local (dev)
 npm run db:studio    # abre o Drizzle Studio
 ```
-> O boot (`initializeDatabase`) cria tabelas com `IF NOT EXISTS` e popula as categorias padrão,
-> reaproveitando o `database.sqlite` legado sem perda de dados.
+> O boot (`initializeDatabase`) cria o banco e o role da API se faltarem, aplica `src/db/schema.sql`
+> (tabelas `IF NOT EXISTS`, índices e policies RLS), concede permissões e popula as categorias padrão.
+> Idempotente: preserva os dados existentes. (`db:push` não conhece as policies — prefira o boot.)
 
 ### 5. Camadas (estilo Java/Spring)
 ```text
@@ -125,8 +140,9 @@ recuperação de senha (`recuperacao.test.js`, com e-mail stubado).
 Sem cobertura (divergências spec × implementação): username/RN21, foto de perfil,
 RN18 rural "nome da propriedade" e confirmação por senha na exclusão — a API não
 tem esses campos/fluxos. A integração sobe o app em porta
-efêmera com SQLite temporário e uploads isolados por arquivo (via `UPLOAD_DIR`) —
-não toca no `database.sqlite` nem em `public/uploads` de dev.
+efêmera com um banco PostgreSQL temporário por arquivo (`agrostand_test_*`, dropado ao fim; exige
+`DATABASE_URL`/`DATABASE_ADMIN_URL` no `.env`) e uploads isolados (via `UPLOAD_DIR`) —
+não toca no banco nem em `public/uploads` de dev. `rls.test.js` prova o isolamento no próprio banco.
 
 ---
 

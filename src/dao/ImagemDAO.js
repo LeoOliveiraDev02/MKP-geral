@@ -2,7 +2,7 @@
  * @file ImagemDAO.js (Drizzle)
  * @description DAO de imagens: persistência da tabela `Imagem` via Drizzle ORM.
  * (Camada DAO — as regras de negócio vivem nas entidades de `src/domain`.)
- * Retornos em snake_case legado (`anuncio_id`, ...). Métodos síncronos com `tx` opcional.
+ * Retornos em snake_case legado (`anuncio_id`, ...). Métodos assíncronos com `tx` opcional.
  */
 
 const { eq } = require('drizzle-orm');
@@ -21,24 +21,24 @@ function toLegacy(row) {
 }
 
 class ImagemDAO {
-  static create({ anuncioId, url, tipo, ordem }, client) {
+  static async create({ anuncioId, url, tipo, ordem }, client) {
     const database = client || getDb();
-    const result = database
+    const [row] = await database
       .insert(imagens)
       .values({ anuncioId: Number(anuncioId), url, tipo, ordem })
-      .run();
-    return Number(result.lastInsertRowid);
+      .returning({ id: imagens.id });
+    return row.id;
   }
 
-  static findById(id, client) {
+  static async findById(id, client) {
     const database = client || getDb();
-    const row = database.select().from(imagens).where(eq(imagens.id, id)).get();
+    const [row] = await database.select().from(imagens).where(eq(imagens.id, id)).limit(1);
     return row ? toLegacy(row) : row;
   }
 
-  static delete(id, client) {
+  static async delete(id, client) {
     const database = client || getDb();
-    database.delete(imagens).where(eq(imagens.id, id)).run();
+    await database.delete(imagens).where(eq(imagens.id, id));
     return true;
   }
 }

@@ -9,14 +9,15 @@ const { getDb } = require('../db');
 const { categorias } = require('../db/schema');
 
 class CategoriaDAO {
-  static findAll(client) {
+  static async findAll(client) {
     const database = client || getDb();
-    return database.select().from(categorias).orderBy(categorias.nome).all();
+    return database.select().from(categorias).orderBy(categorias.nome);
   }
 
-  static findById(id, client) {
+  static async findById(id, client) {
     const database = client || getDb();
-    return database.select().from(categorias).where(eq(categorias.id, id)).get();
+    const [row] = await database.select().from(categorias).where(eq(categorias.id, id)).limit(1);
+    return row;
   }
 }
 

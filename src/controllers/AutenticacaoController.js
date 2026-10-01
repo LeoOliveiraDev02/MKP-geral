@@ -34,6 +34,22 @@ class AutenticacaoController {
     }
   }
 
+  static async loginWithGoogle(req, res, next) {
+    try {
+      const { token, usuario, novoUsuario } = await AutenticacaoService.loginWithGoogle({
+        credential: req.body.credential,
+        ip: req.ip,
+      });
+      return res.status(novoUsuario ? 201 : 200).json({
+        status: 'success',
+        message: novoUsuario ? 'Cadastro realizado com sucesso via Google.' : 'Autenticação bem-sucedida.',
+        data: { token, usuario, novoUsuario },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async forgotPassword(req, res, next) {
     try {
       await AutenticacaoService.forgotPassword(req.body);

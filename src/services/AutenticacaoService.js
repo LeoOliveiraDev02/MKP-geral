@@ -4,13 +4,18 @@
  * senha. Orquestra entidades de domínio (`src/domain`), DAOs (`src/dao`) e
  * transações; lança erros de `src/errors` em vez de responder HTTP.
  *
- * Transações usam `getDb().transaction((tx) => ...)` (better-sqlite3: callback
- * SÍNCRONO — todo I/O assíncrono como bcrypt e envio de e-mail ocorre FORA da tx).
+ * Transações usam `await getDb().transaction(async (tx) => ...)`; bcrypt e envio
+ * de e-mail ficam FORA da tx para não segurar conexão/locks.
+ *
+ * RLS: todos os fluxos daqui acontecem antes de existir um usuário autenticado
+ * (ou tocam tabelas internas: TentativaLogin, RecuperacaoSenha, TokenRevogado),
+ * então rodam em contexto de sistema (`runAsSystem`, ver final do arquivo).
  */
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
 
 const UsuarioDAO = require('../dao/UsuarioDAO');
 const EnderecoDAO = require('../dao/EnderecoDAO');
@@ -18,7 +23,8 @@ const RecuperacaoSenhaDAO = require('../dao/RecuperacaoSenhaDAO');
 const BloqueioLoginDAO = require('../dao/BloqueioLoginDAO');
 const TokenRevogadoDAO = require('../dao/TokenRevogadoDAO');
 
-const { getDb } = require('../db');
+const { getDb, isUniqueViolation } = require('../db');
+const { runAsSystem } = require('../db/context');
 const { validatePassword, validateEmail, validatePhone } = require('../utils/validadores');
 const { hashToken } = require('../utils/tokens');
 const logger = require('../utils/logger');
@@ -26,8 +32,7 @@ const { Usuario, Endereco, BloqueioLogin, reconstituirUsuario } = require('../do
 const { BadRequestError, UnauthorizedError, TooManyRequestsError } = require('../errors/AppError');
 
 function isUniqueEmailViolation(error) {
-  const msg = String((error && error.message) || error || '');
-  return msg.includes('UNIQUE constraint failed') && msg.includes('Usuario.email');
+  return isUniqueViolation(error, 'Usuario_email_unique');
 }
 
 function signToken(id, email) {
@@ -39,6 +44,26 @@ function signToken(id, email) {
     process.env.JWT_SECRET || 'secret_key_default',
     { expiresIn: '24h' }
   );
+}
+
+// Cliente reaproveitado entre requisições (cacheia as chaves públicas do Google).
+let googleClient = null;
+function getGoogleClient() {
+  if (!googleClient) googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+  return googleClient;
+}
+
+/**
+ * Valida o ID token emitido pelo Google Identity Services (assinatura,
+ * expiração e audience = nosso client ID). Exportado via service para
+ * permitir stub nos testes.
+ */
+async function verificarTokenGoogle(credential) {
+  const ticket = await getGoogleClient().verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  return ticket.getPayload();
 }
 
 class AutenticacaoService {
@@ -84,7 +109,7 @@ class AutenticacaoService {
       throw new BadRequestError('O e-mail informado já está cadastrado.');
     }
 
-    // Hash FORA da transação (bcrypt é assíncrono; tx better-sqlite3 é síncrona)
+    // Hash FORA da transação (CPU-bound; não segura a conexão da tx)
     const senhaHash = await bcrypt.hash(senha, 10);
 
     // Domínio: entidade carrega os dados do novo usuário.
@@ -93,15 +118,15 @@ class AutenticacaoService {
     // Transação atômica: Usuario + Endereco (tudo ou nada)
     let clienteId;
     try {
-      clienteId = getDb().transaction((tx) => {
-        const id = UsuarioDAO.create({
+      clienteId = await getDb().transaction(async (tx) => {
+        const id = await UsuarioDAO.create({
           nome: usuarioEnt.nome,
           sobrenome: usuarioEnt.sobrenome,
           email: usuarioEnt.email,
           telefone: usuarioEnt.telefone,
           senhaHash: usuarioEnt.senhaHash,
         }, tx);
-        EnderecoDAO.create({
+        await EnderecoDAO.create({
           clienteId: id,
           rua: enderecoEnt.rua,
           numero: enderecoEnt.numero,
@@ -187,6 +212,75 @@ class AutenticacaoService {
   }
 
   /**
+   * Login social com Google. Recebe o ID token (`credential`) do botão do
+   * Google no front, valida no servidor e:
+   * - se o e-mail já existe, autentica essa conta (vínculo por e-mail verificado);
+   * - senão, cria o usuário. O Google não fornece telefone nem endereço: o
+   *   telefone fica vazio (completado depois no perfil) e a senha recebe um
+   *   hash aleatório — o usuário pode definir uma via "Esqueci minha senha".
+   * @returns {Promise<{token: string, usuario: Object, novoUsuario: boolean}>}
+   */
+  static async loginWithGoogle({ credential, ip }) {
+    if (!process.env.GOOGLE_CLIENT_ID) {
+      throw new BadRequestError('Login com Google não está configurado no servidor.');
+    }
+    if (!credential) {
+      throw new BadRequestError('Credencial do Google não informada.');
+    }
+
+    let payload;
+    try {
+      payload = await AutenticacaoService.verificarTokenGoogle(credential);
+    } catch {
+      throw new UnauthorizedError('Não foi possível validar o login com o Google.');
+    }
+
+    if (!payload || !payload.email || !payload.email_verified) {
+      throw new UnauthorizedError('A conta Google precisa ter um e-mail verificado.');
+    }
+
+    const email = payload.email.toLowerCase();
+    let user = await UsuarioDAO.findByEmail(email);
+    let novoUsuario = false;
+
+    if (!user) {
+      const nome = payload.given_name || payload.name || email.split('@')[0];
+      const sobrenome = payload.family_name || '-';
+      const senhaHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+
+      try {
+        const id = await UsuarioDAO.create({ nome, sobrenome, email, telefone: '', senhaHash });
+        user = { id, nome, sobrenome, email, telefone: '' };
+        novoUsuario = true;
+        logger.audit('Novo usuário cadastrado via Google', { userId: id, email, ip });
+      } catch (error) {
+        // Corrida: outro request criou a conta entre o find e o insert
+        if (!isUniqueEmailViolation(error)) throw error;
+        user = await UsuarioDAO.findByEmail(email);
+      }
+    }
+
+    // Login bem-sucedido também encerra uma sequência de falhas (RN19)
+    await BloqueioLoginDAO.deleteByEmail(user.email);
+
+    const token = signToken(user.id, user.email);
+
+    logger.info('Usuário autenticado via Google', { userId: user.id, email: user.email, ip });
+
+    return {
+      token,
+      novoUsuario,
+      usuario: {
+        id: user.id,
+        nome: user.nome,
+        sobrenome: user.sobrenome,
+        email: user.email,
+        telefone: user.telefone,
+      },
+    };
+  }
+
+  /**
    * UC13: encerra a sessão revogando o JWT atual (denylist até a expiração).
    * Guarda só o hash do token, nunca o token bruto.
    */
@@ -220,9 +314,9 @@ class AutenticacaoService {
     const expiraEm = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     // Invalida códigos anteriores + insere o novo atomicamente
-    getDb().transaction((tx) => {
-      RecuperacaoSenhaDAO.invalidateActiveByUsuarioId(user.id, tx);
-      RecuperacaoSenhaDAO.create({ usuarioId: user.id, codigo, expiraEm }, tx);
+    await getDb().transaction(async (tx) => {
+      await RecuperacaoSenhaDAO.invalidateActiveByUsuarioId(user.id, tx);
+      await RecuperacaoSenhaDAO.create({ usuarioId: user.id, codigo, expiraEm }, tx);
     });
 
     // Envio de e-mail APÓS o commit (I/O externo nunca dentro da tx)
@@ -260,9 +354,9 @@ class AutenticacaoService {
     // Hash fora da tx
     const hash = await bcrypt.hash(novaSenha, 10);
 
-    getDb().transaction((tx) => {
-      UsuarioDAO.updatePassword(user.id, hash, tx);
-      RecuperacaoSenhaDAO.markAsUsed(record.id, tx);
+    await getDb().transaction(async (tx) => {
+      await UsuarioDAO.updatePassword(user.id, hash, tx);
+      await RecuperacaoSenhaDAO.markAsUsed(record.id, tx);
     });
 
     logger.audit('Senha redefinida com sucesso via recuperação de senha', {
@@ -272,5 +366,13 @@ class AutenticacaoService {
     });
   }
 }
+
+// RLS: fluxos de autenticação rodam como sistema (ver cabeçalho do arquivo).
+for (const metodo of ['register', 'login', 'loginWithGoogle', 'logout', 'forgotPassword', 'resetPassword']) {
+  const original = AutenticacaoService[metodo];
+  AutenticacaoService[metodo] = (...args) => runAsSystem(() => original.apply(AutenticacaoService, args));
+}
+
+AutenticacaoService.verificarTokenGoogle = verificarTokenGoogle;
 
 module.exports = AutenticacaoService;

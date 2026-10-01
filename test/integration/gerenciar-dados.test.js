@@ -4,7 +4,6 @@
  * unicidade de e-mail (RN13) e formatos. Garantia mínima: nada inválido persiste.
  * (Username/RN21 e confirmação por senha não existem nesta implementação.)
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');

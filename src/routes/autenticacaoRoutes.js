@@ -32,6 +32,14 @@ router.post('/register', AutenticacaoController.register);
 router.post('/login', AutenticacaoController.login);
 
 /**
+ * Rota: POST /google
+ * Descrição: Login/cadastro com Google. Recebe `credential` (ID token do Google Identity Services),
+ * valida no servidor e devolve o mesmo JWT do login tradicional.
+ * Mapeamento: AutenticacaoController.loginWithGoogle
+ */
+router.post('/google', AutenticacaoController.loginWithGoogle);
+
+/**
  * Rota: POST /forgot-password
  * Descrição: Solicita um link/token de recuperação de senha por e-mail para um usuário que esqueceu seus dados.
  * Mapeamento: AutenticacaoController.forgotPassword

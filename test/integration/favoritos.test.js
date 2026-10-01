@@ -4,13 +4,12 @@
  * toggle, unicidade, 401 sem login, indisponível p/ lixeira, lista só
  * própria (recentes primeiro, indisponíveis sinalizados), remoção e RN20.
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { startServer, api, pngFile, snapshotUploads, cleanUploads } = require('../helpers');
+const { startServer, asSystem, api, pngFile, snapshotUploads, cleanUploads } = require('../helpers');
 
 async function publicar(base, token, categoriaId, enderecoId, nome) {
   const fd = new FormData();
@@ -91,8 +90,11 @@ describe('UC10/UC11 — Favoritos', async () => {
     // UNIQUE no banco como garantia final
     const FavoritoDAO = require('../../src/dao/FavoritoDAO');
     const UsuarioDAO = require('../../src/dao/UsuarioDAO');
-    const uid = (await UsuarioDAO.findByEmail('fa@test.com')).id;
-    assert.throws(() => FavoritoDAO.create({ clienteId: uid, anuncioId: ad1.id }), /UNIQUE constraint failed/);
+    const uid = (await asSystem(() => UsuarioDAO.findByEmail('fa@test.com'))).id;
+    await assert.rejects(
+      asSystem(() => FavoritoDAO.create({ clienteId: uid, anuncioId: ad1.id })),
+      (err) => (err.cause || err).code === '23505' // unique_violation
+    );
   });
 
   it('alternativo 2 (sem login): 401', async () => {
@@ -149,12 +151,12 @@ describe('UC10/UC11 — Favoritos', async () => {
   it('RN20: excluir conta remove os favoritos', async () => {
     const FavoritoDAO = require('../../src/dao/FavoritoDAO');
     const UsuarioDAO = require('../../src/dao/UsuarioDAO');
-    const uid = (await UsuarioDAO.findByEmail('fb@test.com')).id;
+    const uid = (await asSystem(() => UsuarioDAO.findByEmail('fb@test.com'))).id;
 
     await api(base, 'POST', '/api/favorites/toggle', { token: tokenB, body: { anuncioId: ad1.id } });
-    assert.equal((await FavoritoDAO.listByCliente(uid)).length, 1);
+    assert.equal((await asSystem(() => FavoritoDAO.listByCliente(uid))).length, 1);
 
     assert.equal((await api(base, 'DELETE', '/api/users/account', { token: tokenB })).status, 200);
-    assert.deepEqual(await FavoritoDAO.listByCliente(uid), []);
+    assert.deepEqual(await asSystem(() => FavoritoDAO.listByCliente(uid)), []);
   });
 });

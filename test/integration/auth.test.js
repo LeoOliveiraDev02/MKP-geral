@@ -3,7 +3,6 @@
  * @description UC1 — Autenticação e conta (integração HTTP + SQLite temporário):
  * registro, login, perfil, senha e CRUD de endereços com propriedade.
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');

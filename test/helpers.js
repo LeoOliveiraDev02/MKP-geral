@@ -3,10 +3,12 @@
  * @description Utilidades compartilhadas dos testes (node:test).
  *
  * Isolamento:
- * - Cada arquivo de teste roda em processo próprio: define DATABASE_PATH
- *   temporário ANTES de qualquer require de `src/` (o singleton do Drizzle
- *   fixa o caminho no primeiro load).
- * - Requires de `src/` aqui são LAZY (dentro das funções) pelo mesmo motivo.
+ * - Cada arquivo de teste roda em processo próprio e ganha um banco PostgreSQL
+ *   temporário (`agrostand_test_<tag>_<pid>`), criado no boot e dropado no
+ *   close. Credenciais vêm do `.env` (DATABASE_URL / DATABASE_ADMIN_URL).
+ * - Requires de `src/` aqui são LAZY (dentro das funções): o singleton do
+ *   Drizzle fixa a URL do banco no primeiro uso.
+ * - DAOs chamados direto pelos testes passam pelo RLS: use `asSystem(fn)`.
  * - E-mail transacional é stubado em memória (sem Ethereal/rede).
  */
 
@@ -23,14 +25,44 @@ function uploadsDir() {
   return process.env.UPLOAD_DIR || path.join(repoRoot(), 'public', 'uploads');
 }
 
-function tempDbPath(tag) {
-  return path.join(os.tmpdir(), `agrostand-test-${tag}-${process.pid}.sqlite`);
+/** Aponta DATABASE_URL/DATABASE_ADMIN_URL para um banco exclusivo deste processo. */
+function useTempDatabase(tag) {
+  require('dotenv').config({ path: path.join(repoRoot(), '.env'), quiet: true });
+  if (!process.env.DATABASE_URL || !process.env.DATABASE_ADMIN_URL) {
+    throw new Error('Testes exigem DATABASE_URL e DATABASE_ADMIN_URL no .env');
+  }
+  const dbName = `agrostand_test_${tag}_${process.pid}`.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  const withDb = (url) => {
+    const u = new URL(url);
+    u.pathname = '/' + dbName;
+    return u.toString();
+  };
+  process.env.DATABASE_URL = withDb(process.env.DATABASE_URL);
+  process.env.DATABASE_ADMIN_URL = withDb(process.env.DATABASE_ADMIN_URL);
+  return dbName;
+}
+
+async function dropDatabase(dbName) {
+  const { Client, escapeIdentifier } = require('pg');
+  const u = new URL(process.env.DATABASE_ADMIN_URL);
+  u.pathname = '/postgres';
+  const client = new Client({ connectionString: u.toString() });
+  await client.connect();
+  try {
+    await client.query(`DROP DATABASE IF EXISTS ${escapeIdentifier(dbName)} WITH (FORCE)`);
+  } finally {
+    await client.end();
+  }
+}
+
+/** Executa `fn` com privilégio de sistema no RLS (inspeção direta via DAO). */
+function asSystem(fn) {
+  return require('../src/db/context').runAsSystem(fn);
 }
 
 /** Sobe o app com banco temporário e uploads isolados, em porta efêmera. */
 async function startServer(tag) {
-  const dbPath = tempDbPath(tag);
-  process.env.DATABASE_PATH = dbPath;
+  const dbName = useTempDatabase(tag);
   process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
   // Diretório de upload exclusivo deste arquivo (execução paralela segura)
@@ -51,14 +83,8 @@ async function startServer(tag) {
     uploadDir,
     async close() {
       await new Promise((resolve) => server.close(resolve));
-      closeDatabase();
-      for (const suffix of ['', '-wal', '-shm']) {
-        try {
-          fs.unlinkSync(dbPath + suffix);
-        } catch {
-          // ignora se não existir
-        }
-      }
+      await closeDatabase();
+      await dropDatabase(dbName);
       try {
         fs.rmSync(uploadDir, { recursive: true, force: true });
       } catch {
@@ -137,6 +163,7 @@ function stubEmail() {
 
 module.exports = {
   startServer,
+  asSystem,
   api,
   PNG_1X1,
   pngFile,

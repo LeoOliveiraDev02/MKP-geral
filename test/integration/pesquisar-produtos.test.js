@@ -3,7 +3,6 @@
  * @description UC5 — Pesquisar Produtos (RF05): busca por nome ou categoria
  * retorna só ATIVOS; lixeira nunca aparece; zero resultados.
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');

@@ -1,10 +1,10 @@
 /**
  * @file schema.js
- * @description Schema Drizzle ORM — fonte única de verdade das tabelas SQLite.
+ * @description Schema Drizzle ORM — fonte única de verdade das tabelas PostgreSQL.
  *
  * Convenções:
  * - Nomes de TABELAS e COLUNAS preservam o legado (Usuario, Endereco, ... + snake_case)
- *   para reutilizar o arquivo `database.sqlite` existente sem migração destrutiva.
+ *   (herdados do SQLite) — no PostgreSQL ficam entre aspas ("Usuario", ...).
  * - Nomes de PROPRIEDADES JS usam camelCase idiomático do Drizzle
  *   (ex: `clienteId` <-> coluna `cliente_id`).
  * - A camada de DAOs (`src/dao`) traduz a saída para o formato snake_case legado
@@ -12,21 +12,25 @@
  *   mantendo a API HTTP estável.
  */
 
-const { sqliteTable, text, integer, real, index, uniqueIndex, check } = require('drizzle-orm/sqlite-core');
+const { pgTable, text, integer, doublePrecision, index, uniqueIndex, check } = require('drizzle-orm/pg-core');
 const { sql } = require('drizzle-orm');
 
+// Timestamps seguem como TEXT no formato do legado SQLite (UTC 'YYYY-MM-DD HH:MM:SS'),
+// preservando o contrato da API e as comparações lexicográficas com ISO-8601.
+const AGORA_UTC = sql`to_char(timezone('UTC', now()), 'YYYY-MM-DD HH24:MI:SS')`;
+
 // ─── Usuario ───
-const usuarios = sqliteTable(
+const usuarios = pgTable(
   'Usuario',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
     nome: text('nome').notNull(),
     sobrenome: text('sobrenome').notNull(),
     email: text('email').notNull().unique(),
     telefone: text('telefone').notNull(),
     senhaHash: text('senha_hash').notNull(),
     dataCadastro: text('data_cadastro')
-      .default(sql`CURRENT_TIMESTAMP`)
+      .default(AGORA_UTC)
       .notNull(),
   },
   (t) => [
@@ -35,10 +39,10 @@ const usuarios = sqliteTable(
 );
 
 // ─── Endereco ───
-const enderecos = sqliteTable(
+const enderecos = pgTable(
   'Endereco',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
     clienteId: integer('cliente_id')
       .notNull()
       .references(() => usuarios.id, { onDelete: 'cascade' }),
@@ -57,17 +61,17 @@ const enderecos = sqliteTable(
 );
 
 // ─── Categoria ───
-const categorias = sqliteTable('Categoria', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+const categorias = pgTable('Categoria', {
+  id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
   nome: text('nome').notNull().unique(),
   descricao: text('descricao'),
 });
 
 // ─── Anuncio ───
-const anuncios = sqliteTable(
+const anuncios = pgTable(
   'Anuncio',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
     anuncianteId: integer('anunciante_id')
       .notNull()
       .references(() => usuarios.id, { onDelete: 'cascade' }),
@@ -79,9 +83,9 @@ const anuncios = sqliteTable(
       .references(() => enderecos.id, { onDelete: 'restrict' }),
     nome: text('nome').notNull(),
     descricao: text('descricao').notNull(),
-    preco: real('preco').notNull(),
+    preco: doublePrecision('preco').notNull(),
     dataPublicacao: text('data_publicacao')
-      .default(sql`CURRENT_TIMESTAMP`)
+      .default(AGORA_UTC)
       .notNull(),
     status: text('status').default('ATIVO').notNull(),
     dataRemocao: text('data_remocao'),
@@ -98,10 +102,10 @@ const anuncios = sqliteTable(
 );
 
 // ─── Imagem ───
-const imagens = sqliteTable(
+const imagens = pgTable(
   'Imagem',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
     anuncioId: integer('anuncio_id')
       .notNull()
       .references(() => anuncios.id, { onDelete: 'cascade' }),
@@ -122,10 +126,10 @@ const imagens = sqliteTable(
 );
 
 // ─── RecuperacaoSenha ───
-const recuperacaoSenhas = sqliteTable(
+const recuperacaoSenhas = pgTable(
   'RecuperacaoSenha',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
     usuarioId: integer('usuario_id')
       .notNull()
       .references(() => usuarios.id, { onDelete: 'cascade' }),
@@ -138,10 +142,10 @@ const recuperacaoSenhas = sqliteTable(
 
 // ─── Favorito ───
 // RN17: um cliente não favorita o mesmo anúncio duas vezes (UNIQUE).
-const favoritos = sqliteTable(
+const favoritos = pgTable(
   'Favorito',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
     clienteId: integer('cliente_id')
       .notNull()
       .references(() => usuarios.id, { onDelete: 'cascade' }),
@@ -149,7 +153,7 @@ const favoritos = sqliteTable(
       .notNull()
       .references(() => anuncios.id, { onDelete: 'cascade' }),
     dataFavorito: text('data_favorito')
-      .default(sql`CURRENT_TIMESTAMP`)
+      .default(AGORA_UTC)
       .notNull(),
   },
   (t) => [
@@ -162,14 +166,14 @@ const favoritos = sqliteTable(
 // ─── TentativaLogin (RN19) ───
 // Contador de falhas consecutivas por e-mail para bloqueio temporário.
 // Sem janela de expiração: só um login bem-sucedido zera a contagem.
-const tentativasLogin = sqliteTable(
+const tentativasLogin = pgTable(
   'TentativaLogin',
   {
     email: text('email').primaryKey(),
     tentativas: integer('tentativas').default(0).notNull(),
     bloqueadoAte: text('bloqueado_ate'),
     atualizadoEm: text('atualizado_em')
-      .default(sql`CURRENT_TIMESTAMP`)
+      .default(AGORA_UTC)
       .notNull(),
   },
   (t) => [index('idx_tentativalogin_bloqueio').on(t.bloqueadoAte)]
@@ -178,14 +182,14 @@ const tentativasLogin = sqliteTable(
 // ─── TokenRevogado (UC13 logout) ───
 // Denylist de JWTs: guarda o hash SHA-256 do token até sua expiração.
 // Linhas expiradas são purgadas de forma amortizada a cada logout.
-const tokensRevogados = sqliteTable(
+const tokensRevogados = pgTable(
   'TokenRevogado',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
     tokenHash: text('token_hash').notNull().unique(),
     expiraEm: text('expira_em').notNull(),
     revogadoEm: text('revogado_em')
-      .default(sql`CURRENT_TIMESTAMP`)
+      .default(AGORA_UTC)
       .notNull(),
   },
   (t) => [

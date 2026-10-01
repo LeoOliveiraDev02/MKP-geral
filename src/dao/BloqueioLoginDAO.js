@@ -18,15 +18,16 @@ function toLegacy(row) {
 }
 
 class BloqueioLoginDAO {
-  static findByEmail(email, client) {
+  static async findByEmail(email, client) {
     const database = client || getDb();
-    const row = database.select().from(tentativasLogin).where(eq(tentativasLogin.email, email)).get();
+    const [row] = await database.select().from(tentativasLogin).where(eq(tentativasLogin.email, email))
+      .limit(1);
     return row ? toLegacy(row) : row;
   }
 
-  static salvar({ email, tentativas, bloqueadoAte }, client) {
+  static async salvar({ email, tentativas, bloqueadoAte }, client) {
     const database = client || getDb();
-    database
+    await database
       .insert(tentativasLogin)
       .values({ email, tentativas, bloqueadoAte: bloqueadoAte ?? null })
       .onConflictDoUpdate({
@@ -36,14 +37,13 @@ class BloqueioLoginDAO {
           bloqueadoAte: bloqueadoAte ?? null,
           atualizadoEm: new Date().toISOString(),
         },
-      })
-      .run();
+      });
     return true;
   }
 
-  static deleteByEmail(email, client) {
+  static async deleteByEmail(email, client) {
     const database = client || getDb();
-    database.delete(tentativasLogin).where(eq(tentativasLogin.email, email)).run();
+    await database.delete(tentativasLogin).where(eq(tentativasLogin.email, email));
     return true;
   }
 }

@@ -4,9 +4,9 @@
  * Orquestra o agregado de domínio (`Anuncio` + `Produto` + `Imagem` + ...),
  * os DAOs e o upload de arquivos; lança erros de `src/errors`.
  *
- * Nota de transação (better-sqlite3 é síncrono):
- * - Todo I/O assíncrono (upload/remoção de arquivos) ocorre ANTES ou DEPOIS
- *   da transação, nunca dentro de `db.transaction((tx) => ...)`.
+ * Nota de transação:
+ * - Upload/remoção de arquivos ocorre ANTES ou DEPOIS da transação, nunca
+ *   dentro de `db.transaction(async (tx) => ...)` (arquivos não fazem rollback).
  * - `httpReq` (Express) é usado SOMENTE para descobrir protocolo/host na
  *   montagem da URL pública do upload — nada de HTTP além disso.
  */
@@ -17,6 +17,7 @@ const EnderecoDAO = require('../dao/EnderecoDAO');
 const CategoriaDAO = require('../dao/CategoriaDAO');
 const ArmazenamentoService = require('./armazenamentoService');
 const { getDb } = require('../db');
+const { runAsSystem } = require('../db/context');
 const { generateWhatsAppLink } = require('../utils/whatsapp');
 const logger = require('../utils/logger');
 const {
@@ -128,7 +129,8 @@ class AnuncioService {
       novoEnderecoEnt.zona = upperZona;
       enderecoEnt = novoEnderecoEnt;
     } else {
-      const address = await EnderecoDAO.findById(resolvedEnderecoId);
+      // Pré-checagem como sistema: distingue 404 de 403 (RLS esconderia o alheio)
+      const address = await runAsSystem(() => EnderecoDAO.findById(resolvedEnderecoId));
       if (!address) {
         throw new BadRequestError('O endereço informado não existe.');
       }
@@ -167,10 +169,10 @@ class AnuncioService {
     }
 
     // Transação atômica: endereço (se novo) + anúncio + imagens, do estado da entidade
-    const adId = getDb().transaction((tx) => {
+    const adId = await getDb().transaction(async (tx) => {
       let enderecoFinal = resolvedEnderecoId;
       if (!enderecoFinal) {
-        enderecoFinal = EnderecoDAO.create({
+        enderecoFinal = await EnderecoDAO.create({
           clienteId: anuncianteId,
           rua: novoEnderecoEnt.rua,
           numero: novoEnderecoEnt.numero,
@@ -181,7 +183,7 @@ class AnuncioService {
           zona: novoEnderecoEnt.zona,
         }, tx);
       }
-      const id = AnuncioDAO.create({
+      const id = await AnuncioDAO.create({
         anuncianteId: anuncianteEnt.id,
         categoriaId,
         enderecoId: enderecoFinal,
@@ -190,7 +192,7 @@ class AnuncioService {
         preco: anuncioEnt.produto.preco,
       }, tx);
       for (const img of anuncioEnt.imagens) {
-        ImagemDAO.create({ anuncioId: id, url: img.url, tipo: img.tipo, ordem: img.ordem }, tx);
+        await ImagemDAO.create({ anuncioId: id, url: img.url, tipo: img.tipo, ordem: img.ordem }, tx);
       }
       return id;
     });
@@ -208,7 +210,8 @@ class AnuncioService {
     const anuncianteId = anunciantePublic.id;
     const { nome, descricao, preco, categoriaId, enderecoId } = body;
 
-    const ad = await AnuncioDAO.findById(id, true);
+    // Pré-checagem como sistema: distingue 404 de 403 (RLS esconderia o alheio)
+    const ad = await runAsSystem(() => AnuncioDAO.findById(id, true));
     if (!ad) {
       throw new NotFoundError('Anúncio não encontrado.');
     }
@@ -236,7 +239,7 @@ class AnuncioService {
       throw new BadRequestError('A categoria informada não existe.');
     }
 
-    const address = await EnderecoDAO.findById(enderecoId);
+    const address = await runAsSystem(() => EnderecoDAO.findById(enderecoId));
     if (!address || address.cliente_id !== anuncianteId) {
       throw new BadRequestError('O endereço informado não existe ou não pertence a você.');
     }
@@ -300,28 +303,28 @@ class AnuncioService {
     // Coleta arquivos físicos a remover APÓS o commit
     const filesToDelete = [];
 
-    getDb().transaction((tx) => {
-      AnuncioDAO.update(id, {
+    await getDb().transaction(async (tx) => {
+      await AnuncioDAO.update(id, {
         categoriaId, enderecoId, nome, descricao, preco: parsedPreco,
       }, tx);
 
       if (newPrimaryUrl) {
         if (oldPrimary) {
-          ImagemDAO.delete(oldPrimary.id, tx);
+          await ImagemDAO.delete(oldPrimary.id, tx);
           filesToDelete.push(oldPrimary.url);
         }
-        ImagemDAO.create({ anuncioId: id, url: newPrimaryUrl, tipo: 'PRINCIPAL', ordem: 1 }, tx);
+        await ImagemDAO.create({ anuncioId: id, url: newPrimaryUrl, tipo: 'PRINCIPAL', ordem: 1 }, tx);
       }
 
       let nextOrder = nextOrderBase;
       for (const url of newSecondaryUrls) {
-        ImagemDAO.create({ anuncioId: id, url, tipo: 'SECUNDARIA', ordem: nextOrder++ }, tx);
+        await ImagemDAO.create({ anuncioId: id, url, tipo: 'SECUNDARIA', ordem: nextOrder++ }, tx);
       }
 
       for (const imgId of deleteImageIds) {
-        const rec = ImagemDAO.findById(imgId, tx);
+        const rec = await ImagemDAO.findById(imgId, tx);
         if (rec && rec.anuncio_id === parseInt(id) && rec.tipo !== 'PRINCIPAL') {
-          ImagemDAO.delete(imgId, tx);
+          await ImagemDAO.delete(imgId, tx);
           filesToDelete.push(rec.url);
         }
       }
@@ -340,7 +343,8 @@ class AnuncioService {
   static async remove({ anunciantePublic, id }) {
     const anuncianteId = anunciantePublic.id;
 
-    const ad = await AnuncioDAO.findById(id, true);
+    // Pré-checagem como sistema: distingue 404 de 403 (RLS esconderia o alheio)
+    const ad = await runAsSystem(() => AnuncioDAO.findById(id, true));
     if (!ad) {
       throw new NotFoundError('Anúncio não encontrado.');
     }
@@ -360,7 +364,8 @@ class AnuncioService {
   static async restore({ anunciantePublic, id }) {
     const anuncianteId = anunciantePublic.id;
 
-    const ad = await AnuncioDAO.findById(id, true);
+    // Pré-checagem como sistema: distingue 404 de 403 (RLS esconderia o alheio)
+    const ad = await runAsSystem(() => AnuncioDAO.findById(id, true));
     if (!ad) {
       throw new NotFoundError('Anúncio não encontrado.');
     }
@@ -392,7 +397,8 @@ class AnuncioService {
   }
 
   static async triggerCleanup() {
-    const deletedCount = await AnuncioDAO.cleanupLixeira();
+    // Purga CRON (sem usuário): apaga anúncios de terceiros → contexto de sistema no RLS
+    const deletedCount = await runAsSystem(() => AnuncioDAO.cleanupLixeira());
 
     logger.info('Limpeza de lixeira executada', { deletedCount });
 

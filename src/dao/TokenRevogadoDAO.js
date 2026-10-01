@@ -9,28 +9,26 @@ const { getDb } = require('../db');
 const { tokensRevogados } = require('../db/schema');
 
 class TokenRevogadoDAO {
-  static existePorHash(tokenHash, client) {
+  static async existePorHash(tokenHash, client) {
     const database = client || getDb();
-    const row = database
+    const [row] = await database
       .select({ id: tokensRevogados.id })
       .from(tokensRevogados)
       .where(eq(tokensRevogados.tokenHash, tokenHash))
-      .get();
+      .limit(1);
     return !!row;
   }
 
-  static adicionar({ tokenHash, expiraEm }, client) {
+  static async adicionar({ tokenHash, expiraEm }, client) {
     const database = client || getDb();
-    database
+    await database
       .insert(tokensRevogados)
       .values({ tokenHash, expiraEm })
-      .onConflictDoNothing({ target: tokensRevogados.tokenHash })
-      .run();
+      .onConflictDoNothing({ target: tokensRevogados.tokenHash });
     // Amortizado: limpa expirados a cada revogação (sem write por request)
-    database
+    await database
       .delete(tokensRevogados)
-      .where(lt(tokensRevogados.expiraEm, new Date().toISOString()))
-      .run();
+      .where(lt(tokensRevogados.expiraEm, new Date().toISOString()));
     return true;
   }
 }

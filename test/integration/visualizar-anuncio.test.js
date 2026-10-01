@@ -4,7 +4,6 @@
  * (principal + carrossel), preço, localização e vendedor; anúncio removido
  * ou inexistente responde "indisponível" (fluxo alternativo 1).
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');

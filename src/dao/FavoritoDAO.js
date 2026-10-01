@@ -20,34 +20,35 @@ function toLegacy(row) {
 }
 
 class FavoritoDAO {
-  static find(clienteId, anuncioId, client) {
+  static async find(clienteId, anuncioId, client) {
     const database = client || getDb();
-    const row = database
+    const [row] = await database
       .select()
       .from(favoritos)
       .where(and(eq(favoritos.clienteId, clienteId), eq(favoritos.anuncioId, Number(anuncioId))))
-      .get();
+      .limit(1);
     return row ? toLegacy(row) : row;
   }
 
-  static findById(id, client) {
+  static async findById(id, client) {
     const database = client || getDb();
-    const row = database.select().from(favoritos).where(eq(favoritos.id, Number(id))).get();
+    const [row] = await database.select().from(favoritos).where(eq(favoritos.id, Number(id)))
+      .limit(1);
     return row ? toLegacy(row) : row;
   }
 
-  static create({ clienteId, anuncioId }, client) {
+  static async create({ clienteId, anuncioId }, client) {
     const database = client || getDb();
-    const result = database
+    const [row] = await database
       .insert(favoritos)
       .values({ clienteId, anuncioId: Number(anuncioId) })
-      .run();
-    return Number(result.lastInsertRowid);
+      .returning({ id: favoritos.id });
+    return row.id;
   }
 
-  static deleteById(id, client) {
+  static async deleteById(id, client) {
     const database = client || getDb();
-    database.delete(favoritos).where(eq(favoritos.id, Number(id))).run();
+    await database.delete(favoritos).where(eq(favoritos.id, Number(id)));
     return true;
   }
 
@@ -56,9 +57,9 @@ class FavoritoDAO {
    * purgado aparece como `anuncio: null`) + imagem principal, do mais
    * recente ao mais antigo (id como desempate do timestamp de 1s).
    */
-  static listByCliente(clienteId, client) {
+  static async listByCliente(clienteId, client) {
     const database = client || getDb();
-    const rows = database
+    const rows = await database
       .select({
         id: favoritos.id,
         cliente_id: favoritos.clienteId,
@@ -76,8 +77,7 @@ class FavoritoDAO {
         and(eq(imagens.anuncioId, anuncios.id), eq(imagens.tipo, 'PRINCIPAL'))
       )
       .where(eq(favoritos.clienteId, clienteId))
-      .orderBy(desc(favoritos.dataFavorito), desc(favoritos.id))
-      .all();
+      .orderBy(desc(favoritos.dataFavorito), desc(favoritos.id));
 
     return rows.map((r) => ({
       id: r.id,

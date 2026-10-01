@@ -7,6 +7,7 @@
 const bcrypt = require('bcryptjs');
 
 const UsuarioDAO = require('../dao/UsuarioDAO');
+const { runAsSystem } = require('../db/context');
 const { validatePassword, validateEmail, validatePhone } = require('../utils/validadores');
 const logger = require('../utils/logger');
 const { reconstituirUsuario } = require('../domain/factories');
@@ -31,7 +32,8 @@ class UsuarioService {
     }
 
     // RN13 — unicidade de e-mail
-    const userWithEmail = await UsuarioDAO.findByEmail(email);
+    // RLS: precisa enxergar contas de terceiros para checar unicidade
+    const userWithEmail = await runAsSystem(() => UsuarioDAO.findByEmail(email));
     if (userWithEmail && userWithEmail.id !== userId) {
       throw new BadRequestError('O e-mail informado já está em uso por outro usuário.');
     }

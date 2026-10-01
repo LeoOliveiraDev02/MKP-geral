@@ -5,13 +5,12 @@
  * terceiros ficam intactos. (Sem confirmação por senha nem favoritos nesta
  * implementação; anúncios são excluídos em cascata, não vão p/ lixeira.)
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { startServer, api, pngFile, snapshotUploads, cleanUploads } = require('../helpers');
+const { startServer, asSystem, api, pngFile, snapshotUploads, cleanUploads } = require('../helpers');
 
 describe('UC14 — Excluir Conta', async () => {
   let base;
@@ -90,11 +89,11 @@ describe('UC14 — Excluir Conta', async () => {
     const ImagemDAO = require('../../src/dao/ImagemDAO');
     const FavoritoDAO = require('../../src/dao/FavoritoDAO');
 
-    assert.equal(await UsuarioDAO.findByEmail(vitima.email), undefined);
-    assert.deepEqual(await EnderecoDAO.findByClienteId(vitima.userId), []);
-    assert.equal(await AnuncioDAO.findById(vitima.anuncioId, true), null);
-    assert.equal(await ImagemDAO.findById(vitima.imagemId), undefined);
-    assert.deepEqual(await FavoritoDAO.listByCliente(vitima.userId), []); // RN20
+    assert.equal(await asSystem(() => UsuarioDAO.findByEmail(vitima.email)), undefined);
+    assert.deepEqual(await asSystem(() => EnderecoDAO.findByClienteId(vitima.userId)), []);
+    assert.equal(await asSystem(() => AnuncioDAO.findById(vitima.anuncioId, true)), null);
+    assert.equal(await asSystem(() => ImagemDAO.findById(vitima.imagemId)), undefined);
+    assert.deepEqual(await asSystem(() => FavoritoDAO.listByCliente(vitima.userId)), []); // RN20
   });
 
   it('terceiros intactos', async () => {

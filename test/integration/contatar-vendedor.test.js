@@ -3,7 +3,6 @@
  * @description UC4 — Contatar Vendedor (RF07): o detalhe entrega o link
  * wa.me com DDI 55 + mensagem pré-preenchida com produto e preço.
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');

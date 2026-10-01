@@ -21,28 +21,27 @@ function toLegacy(row) {
 }
 
 class RecuperacaoSenhaDAO {
-  static invalidateActiveByUsuarioId(usuarioId, client) {
+  static async invalidateActiveByUsuarioId(usuarioId, client) {
     const database = client || getDb();
-    database
+    await database
       .update(recuperacaoSenhas)
       .set({ usado: 1 })
-      .where(and(eq(recuperacaoSenhas.usuarioId, usuarioId), eq(recuperacaoSenhas.usado, 0)))
-      .run();
+      .where(and(eq(recuperacaoSenhas.usuarioId, usuarioId), eq(recuperacaoSenhas.usado, 0)));
     return true;
   }
 
-  static create({ usuarioId, codigo, expiraEm }, client) {
+  static async create({ usuarioId, codigo, expiraEm }, client) {
     const database = client || getDb();
-    const result = database
+    const [row] = await database
       .insert(recuperacaoSenhas)
       .values({ usuarioId, codigo, expiraEm, usado: 0 })
-      .run();
-    return Number(result.lastInsertRowid);
+      .returning({ id: recuperacaoSenhas.id });
+    return row.id;
   }
 
-  static findActiveByUsuarioAndCodigo(usuarioId, codigo, client) {
+  static async findActiveByUsuarioAndCodigo(usuarioId, codigo, client) {
     const database = client || getDb();
-    const row = database
+    const [row] = await database
       .select()
       .from(recuperacaoSenhas)
       .where(
@@ -53,14 +52,13 @@ class RecuperacaoSenhaDAO {
         )
       )
       .orderBy(desc(recuperacaoSenhas.id))
-      .limit(1)
-      .get();
+      .limit(1);
     return row ? toLegacy(row) : row;
   }
 
-  static markAsUsed(id, client) {
+  static async markAsUsed(id, client) {
     const database = client || getDb();
-    database.update(recuperacaoSenhas).set({ usado: 1 }).where(eq(recuperacaoSenhas.id, id)).run();
+    await database.update(recuperacaoSenhas).set({ usado: 1 }).where(eq(recuperacaoSenhas.id, id));
     return true;
   }
 }

@@ -6,9 +6,8 @@
  * Compatibilidade:
  * - Assinaturas e formatos de retorno preservam o legado (snake_case:
  *   `senha_hash`, `data_cadastro`, ...).
- * - Métodos são SÍNCRONOS (better-sqlite3 é síncrono). Os Controllers podem
- *   continuar usando `await` — aguardar um valor não-Promise é inofensivo —
- *   e o mesmo método funciona dentro de `db.transaction((tx) => ...)`.
+ * - Métodos são assíncronos (node-postgres) e funcionam dentro de
+ *   `await db.transaction(async (tx) => ...)`.
  * - Passe `tx` como último argumento para rodar dentro de uma transação:
  *   `UsuarioDAO.create(dados, tx)`.
  */
@@ -38,18 +37,18 @@ function toFull(row) {
 }
 
 class UsuarioDAO {
-  static create({ nome, sobrenome, email, telefone, senhaHash }, client) {
+  static async create({ nome, sobrenome, email, telefone, senhaHash }, client) {
     const database = client || getDb();
-    const result = database
+    const [row] = await database
       .insert(usuarios)
       .values({ nome, sobrenome, email, telefone, senhaHash })
-      .run();
-    return Number(result.lastInsertRowid);
+      .returning({ id: usuarios.id });
+    return row.id;
   }
 
-  static findById(id, client) {
+  static async findById(id, client) {
     const database = client || getDb();
-    const row = database
+    const [row] = await database
       .select({
         id: usuarios.id,
         nome: usuarios.nome,
@@ -60,42 +59,43 @@ class UsuarioDAO {
       })
       .from(usuarios)
       .where(eq(usuarios.id, id))
-      .get();
+      .limit(1);
     return row ? toPublic(row) : row;
   }
 
-  static findByIdWithPassword(id, client) {
+  static async findByIdWithPassword(id, client) {
     const database = client || getDb();
-    const row = database.select().from(usuarios).where(eq(usuarios.id, id)).get();
+    const [row] = await database.select().from(usuarios).where(eq(usuarios.id, id))
+      .limit(1);
     return row ? toFull(row) : row;
   }
 
-  static findByEmail(email, client) {
+  static async findByEmail(email, client) {
     const database = client || getDb();
-    const row = database.select().from(usuarios).where(eq(usuarios.email, email)).get();
+    const [row] = await database.select().from(usuarios).where(eq(usuarios.email, email))
+      .limit(1);
     return row ? toFull(row) : row;
   }
 
-  static update(id, { nome, sobrenome, email, telefone }, client) {
+  static async update(id, { nome, sobrenome, email, telefone }, client) {
     const database = client || getDb();
-    database
+    await database
       .update(usuarios)
       .set({ nome, sobrenome, email, telefone })
-      .where(eq(usuarios.id, id))
-      .run();
+      .where(eq(usuarios.id, id));
     return true;
   }
 
-  static updatePassword(id, senhaHash, client) {
+  static async updatePassword(id, senhaHash, client) {
     const database = client || getDb();
-    database.update(usuarios).set({ senhaHash }).where(eq(usuarios.id, id)).run();
+    await database.update(usuarios).set({ senhaHash }).where(eq(usuarios.id, id));
     return true;
   }
 
   /** RS03 LGPD: CASCADE remove endereços/anúncios/imagens/recuperações. */
-  static delete(id, client) {
+  static async delete(id, client) {
     const database = client || getDb();
-    database.delete(usuarios).where(eq(usuarios.id, id)).run();
+    await database.delete(usuarios).where(eq(usuarios.id, id));
     return true;
   }
 }

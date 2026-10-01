@@ -5,7 +5,6 @@
  * para a lixeira (imagens mantidas p/ auditoria), restore e purga +30 dias.
  * Garantia mínima: ninguém edita/remove anúncio alheio.
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const fs = require('fs');
@@ -13,7 +12,7 @@ const path = require('path');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { startServer, api, pngFile, snapshotUploads, cleanUploads } = require('../helpers');
+const { startServer, asSystem, api, pngFile, snapshotUploads, cleanUploads } = require('../helpers');
 
 const SENHA = 'Forte@123';
 
@@ -196,7 +195,7 @@ describe('UC7 — Gerenciar Produtos', async () => {
 
     // RN15: registros (anúncio + imagens) preservados para auditoria
     const AnuncioDAO = require('../../src/dao/AnuncioDAO');
-    const naLixeira = await AnuncioDAO.findById(ad1.id, true);
+    const naLixeira = await asSystem(() => AnuncioDAO.findById(ad1.id, true));
     assert.equal(naLixeira.status, 'EM_LIXEIRA');
     assert.ok(naLixeira.imagens.length >= 1);
 
@@ -224,18 +223,20 @@ describe('UC7 — Gerenciar Produtos', async () => {
     const { eq } = require('drizzle-orm');
     const limite = new Date();
     limite.setDate(limite.getDate() - 31);
-    getDb().update(schema.anuncios).set({ dataRemocao: limite.toISOString() }).where(eq(schema.anuncios.id, ad1.id)).run();
+    await asSystem(() =>
+      getDb().update(schema.anuncios).set({ dataRemocao: limite.toISOString() }).where(eq(schema.anuncios.id, ad1.id))
+    );
 
     const AnuncioDAO = require('../../src/dao/AnuncioDAO');
     const ImagemDAO = require('../../src/dao/ImagemDAO');
-    const imgAntiga = (await AnuncioDAO.findById(ad1.id, true)).imagens[0].id;
+    const imgAntiga = (await asSystem(() => AnuncioDAO.findById(ad1.id, true))).imagens[0].id;
 
     const purge = await api(base, 'POST', '/api/ads/cleanup');
     assert.equal(purge.status, 200);
     assert.equal(purge.body.data.anuncios_excluidos_definitivamente, 1);
 
-    assert.equal(await AnuncioDAO.findById(ad1.id, true), null);
-    assert.equal(await ImagemDAO.findById(imgAntiga), undefined);
-    assert.equal((await AnuncioDAO.findById(adB, true)).status, 'EM_LIXEIRA');
+    assert.equal(await asSystem(() => AnuncioDAO.findById(ad1.id, true)), null);
+    assert.equal(await asSystem(() => ImagemDAO.findById(imgAntiga)), undefined);
+    assert.equal((await asSystem(() => AnuncioDAO.findById(adB, true))).status, 'EM_LIXEIRA');
   });
 });

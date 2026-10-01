@@ -4,7 +4,6 @@
  * (urbana/rural), obrigatoriedade por zona, edição, remoção e garantia mínima
  * (nada incompleto é salvo).
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');

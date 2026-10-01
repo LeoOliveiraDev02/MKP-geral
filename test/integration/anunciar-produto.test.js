@@ -4,7 +4,6 @@
  * com endereço existente, alternativo com novo endereço, matriz de validação
  * e imagens inválidas. Garantia mínima: nada parcial é persistido.
  */
-process.env.DATABASE_PATH = 'placeholder-substituido-no-startServer';
 process.env.JWT_SECRET = 'test-secret';
 
 const { describe, it, before, after } = require('node:test');
@@ -159,7 +158,7 @@ describe('UC2 — Anunciar Produto', async () => {
   });
 
   it('garantia de sucesso: detalhe expõe produto, vendedor e imagens', async () => {
-    const lista = await api(base, 'GET', '/api/ads?search=Café');
+    const lista = await api(base, 'GET', '/api/ads?search=Saca');
     const id = lista.body.data.data[0].id;
     const { body } = await api(base, 'GET', `/api/ads/${id}`);
     const ad = body.data.anuncio;

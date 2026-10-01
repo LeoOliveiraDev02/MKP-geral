@@ -3,7 +3,7 @@
  * @description DAO de endereços: persistência da tabela `Endereco` via Drizzle ORM.
  * (Camada DAO — as regras de negócio vivem nas entidades de `src/domain`.)
  * Retornos preservam o legado snake_case (`cliente_id`, ...).
- * Métodos síncronos — aceitam `tx` opcional para transações.
+ * Métodos assíncronos — aceitam `tx` opcional para transações.
  */
 
 const { eq } = require('drizzle-orm');
@@ -26,9 +26,9 @@ function toLegacy(row) {
 }
 
 class EnderecoDAO {
-  static create({ clienteId, rua, numero, bairro, cep, cidade, uf, zona }, client) {
+  static async create({ clienteId, rua, numero, bairro, cep, cidade, uf, zona }, client) {
     const database = client || getDb();
-    const result = database
+    const [row] = await database
       .insert(enderecos)
       .values({
         clienteId,
@@ -40,39 +40,38 @@ class EnderecoDAO {
         uf,
         zona: zona.toUpperCase(),
       })
-      .run();
-    return Number(result.lastInsertRowid);
+      .returning({ id: enderecos.id });
+    return row.id;
   }
 
-  static findById(id, client) {
+  static async findById(id, client) {
     const database = client || getDb();
-    const row = database.select().from(enderecos).where(eq(enderecos.id, id)).get();
+    const [row] = await database.select().from(enderecos).where(eq(enderecos.id, id))
+      .limit(1);
     return row ? toLegacy(row) : row;
   }
 
-  static findByClienteId(clienteId, client) {
+  static async findByClienteId(clienteId, client) {
     const database = client || getDb();
-    const rows = database
+    const rows = await database
       .select()
       .from(enderecos)
-      .where(eq(enderecos.clienteId, clienteId))
-      .all();
+      .where(eq(enderecos.clienteId, clienteId));
     return rows.map(toLegacy);
   }
 
-  static update(id, { rua, numero, bairro, cep, cidade, uf, zona }, client) {
+  static async update(id, { rua, numero, bairro, cep, cidade, uf, zona }, client) {
     const database = client || getDb();
-    database
+    await database
       .update(enderecos)
       .set({ rua, numero, bairro, cep: cep ?? null, cidade, uf, zona: zona.toUpperCase() })
-      .where(eq(enderecos.id, id))
-      .run();
+      .where(eq(enderecos.id, id));
     return true;
   }
 
-  static delete(id, client) {
+  static async delete(id, client) {
     const database = client || getDb();
-    database.delete(enderecos).where(eq(enderecos.id, id)).run();
+    await database.delete(enderecos).where(eq(enderecos.id, id));
     return true;
   }
 }

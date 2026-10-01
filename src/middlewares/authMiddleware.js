@@ -9,12 +9,15 @@
 // Importa a biblioteca jsonwebtoken, usada para gerar e verificar tokens JWT (JSON Web Tokens).
 const jwt = require('jsonwebtoken');
 
-// Importa o modelo de Usuário para interagir com o banco de dados SQLite e validar a existência do usuário.
+// Importa o DAO de Usuário para validar a existência do usuário no banco (PostgreSQL).
 const UsuarioDAO = require('../dao/UsuarioDAO');
 
 // Denylist de logout (UC13) + hash de tokens.
 const TokenRevogadoDAO = require('../dao/TokenRevogadoDAO');
 const { hashToken } = require('../utils/tokens');
+
+// Contexto do RLS (PostgreSQL): quem é o usuário das consultas desta requisição.
+const { runAsUser, runAsSystem } = require('../db/context');
 
 /**
  * Middleware que intercepta a requisição e valida a presença e integridade do token JWT.
@@ -46,7 +49,7 @@ async function authMiddleware(req, res, next) {
     
     // Busca o usuário no banco de dados utilizando o ID decodificado do token payload.
     // Isso garante uma camada extra de segurança caso o usuário tenha sido excluído recentemente da plataforma.
-    const user = await UsuarioDAO.findById(decoded.id);
+    const user = await runAsUser(decoded.id, () => UsuarioDAO.findById(decoded.id));
     if (!user) {
       return res.status(401).json({
         status: 'error',
@@ -62,7 +65,8 @@ async function authMiddleware(req, res, next) {
     req.token = token;
 
     // UC13: token revogado no logout não reentra (pós-condição do Encerrar Sessão).
-    if (await TokenRevogadoDAO.existePorHash(hashToken(token))) {
+    // Denylist é tabela interna (RLS: só sistema).
+    if (await runAsSystem(() => TokenRevogadoDAO.existePorHash(hashToken(token)))) {
       return res.status(401).json({
         status: 'error',
         message: 'Sessão encerrada. Faça login novamente.'
@@ -71,7 +75,9 @@ async function authMiddleware(req, res, next) {
     
     // Chama a função 'next()' para sinalizar ao Express que este middleware concluiu sua tarefa com sucesso
     // e que a requisição pode avançar para o próximo manipulador (middleware ou controller).
-    next();
+    // Todo o restante da requisição roda como este usuário: as policies RLS do banco
+    // (app.user_id) passam a valer para cada consulta feita pelos services/DAOs.
+    runAsUser(user.id, next);
   } catch (error) {
     // Trata quaisquer erros que ocorram durante a verificação do JWT (por exemplo, JsonWebTokenError ou TokenExpiredError).
     return res.status(401).json({
