@@ -8,6 +8,7 @@
  */
 
 const AnuncioService = require('../services/AnuncioService');
+const { urlBaseDaRequisicao } = require('../utils/urlBase');
 
 class AnuncioController {
   /** GET / — lista pública paginada com filtros. */
@@ -37,7 +38,7 @@ class AnuncioController {
         anunciantePublic: req.user,
         body: req.body,
         files: req.files,
-        httpReq: req,
+        urlBase: urlBaseDaRequisicao(req),
       });
       return res.status(201).json({
         status: 'success',
@@ -57,7 +58,7 @@ class AnuncioController {
         id: req.params.id,
         body: req.body,
         files: req.files,
-        httpReq: req,
+        urlBase: urlBaseDaRequisicao(req),
       });
       return res.status(200).json({
         status: 'success',

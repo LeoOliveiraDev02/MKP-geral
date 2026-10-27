@@ -63,12 +63,12 @@ const CAMPOS_CESTA = {
 class CestaService {
   // ─── Produtor ───
 
-  static async criar({ vendedorId, body, arquivo, httpReq }) {
+  static async criar({ vendedorId, body, arquivo, urlBase }) {
     const dados = lerCesta(body);
     let imagemUrl = null;
     if (arquivo) {
       try {
-        imagemUrl = await ArmazenamentoService.uploadImage(arquivo, httpReq);
+        imagemUrl = await ArmazenamentoService.uploadImage(arquivo, urlBase);
       } catch (err) {
         throw new BadRequestError(err.message);
       }
@@ -85,14 +85,14 @@ class CestaService {
     return c;
   }
 
-  static async editar({ vendedorId, id, body, arquivo, httpReq }) {
+  static async editar({ vendedorId, id, body, arquivo, urlBase }) {
     const atual = await CestaService.carregarDoVendedor(id, vendedorId);
     const dados = lerCesta(body);
     const campos = { ...dados };
     if (body.ativa !== undefined) campos.ativa = body.ativa === true || body.ativa === 'true';
     if (arquivo) {
       try {
-        campos.imagemUrl = await ArmazenamentoService.uploadImage(arquivo, httpReq);
+        campos.imagemUrl = await ArmazenamentoService.uploadImage(arquivo, urlBase);
       } catch (err) {
         throw new BadRequestError(err.message);
       }

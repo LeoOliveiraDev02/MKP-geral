@@ -33,10 +33,10 @@ class ArmazenamentoService {
    * Para desenvolvimento local, mantemos o arquivo no servidor e retornamos o link público local.
    * 
    * @param {Object} file - Objeto de arquivo fornecido pelo multer (contendo mimetype, size, filename, etc.)
-   * @param {Object} req - Objeto de requisição do Express (necessário para descobrir dinamicamente o protocolo/host do servidor)
+   * @param {string} urlBase - Endereço público da API (ex: https://api.agromundo.com.br), montado pelo controller
    * @returns {Promise<string|null>} URL pública de acesso à imagem ou null se não houver arquivo
    */
-  static async uploadImage(file, req) {
+  static async uploadImage(file, urlBase) {
     // Se nenhum arquivo foi enviado no formulário, retorna null silenciosamente
     if (!file) return null;
 
@@ -64,15 +64,8 @@ class ArmazenamentoService {
       return blob.url;
     }
 
-    // Configurações para gerar o link público dinamicamente para o ambiente de desenvolvimento local:
-    const port = process.env.PORT || 3000;
-    // Identifica se a requisição é segura (HTTPS) para definir o protocolo correto
-    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-    // Obtém o host atual (ex: localhost:3000 ou api.agrostand.com)
-    const host = req.headers.host || `localhost:${port}`;
-    
     // Retorna a URL final da imagem apontando para a pasta estática do servidor Express
-    return `${protocol}://${host}/uploads/${file.filename}`;
+    return `${urlBase}/uploads/${file.filename}`;
   }
 
   /**

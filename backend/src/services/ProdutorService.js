@@ -145,11 +145,11 @@ class ProdutorService {
   }
 
   /** POST /users/profile/photo — foto/logo do produtor. */
-  static async atualizarFoto({ usuarioId, arquivo, httpReq }) {
+  static async atualizarFoto({ usuarioId, arquivo, urlBase }) {
     if (!arquivo) throw new BadRequestError('Envie a imagem no campo "foto".');
     let url;
     try {
-      url = await ArmazenamentoService.uploadImage(arquivo, httpReq);
+      url = await ArmazenamentoService.uploadImage(arquivo, urlBase);
     } catch (err) {
       throw new BadRequestError(err.message);
     }

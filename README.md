@@ -28,6 +28,20 @@ Em dev, o Vite faz proxy de `/api` para `http://localhost:3000`. Em produção, 
 
 Cada pasta é independente (`package.json` próprio) e pode ser publicada separadamente.
 
+## Arquitetura (MVC)
+
+A API segue MVC em camadas; o front React é a camada de View para o usuário.
+
+| Camada | Pasta | Responsabilidade |
+|--------|-------|------------------|
+| Rotas | `backend/src/routes` | Só ligam URL + middlewares ao controller |
+| Controller | `backend/src/controllers` | Adaptador HTTP: lê `req`, chama o service, responde |
+| Model (regras) | `backend/src/services`, `backend/src/domain` | Regras de negócio, sem conhecer o Express |
+| Model (dados) | `backend/src/dao`, `backend/src/db` | Acesso ao PostgreSQL (Drizzle + RLS) |
+| View | `frontend/` e `backend/src/views` | Telas React; HTML de prévia de compartilhamento |
+
+A segurança fica em middlewares transversais (sessão, CSRF, rate limit, validação Zod, Helmet) e no banco (RLS), sem quebrar as camadas.
+
 ## Publicação (Vercel)
 
 - Site: https://agromundo-beryl.vercel.app (projeto `agromundo`, pasta `frontend/`). O `vercel.json` repassa `/api`, `/uploads` e `/share` para a API.

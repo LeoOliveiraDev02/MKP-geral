@@ -8,6 +8,7 @@ const AvaliacaoService = require('../services/AvaliacaoService');
 const PerguntaService = require('../services/PerguntaService');
 const ProdutorService = require('../services/ProdutorService');
 const VerificacaoService = require('../services/VerificacaoService');
+const { urlBaseDaRequisicao } = require('../utils/urlBase');
 
 /** Encapsula o try/catch + envelope padrão de sucesso. */
 function acao(fn, status = 200) {
@@ -36,7 +37,7 @@ const ReputacaoController = {
       nota: req.body.nota,
       comentario: req.body.comentario,
       fotos: (req.files && req.files.fotos) || [],
-      httpReq: req,
+      urlBase: urlBaseDaRequisicao(req),
     }),
   }), 201),
 
@@ -73,7 +74,7 @@ const ReputacaoController = {
 
   atualizarFoto: acao(async (req) => ({
     message: 'Foto atualizada.',
-    data: await ProdutorService.atualizarFoto({ usuarioId: req.user.id, arquivo: req.file, httpReq: req }),
+    data: await ProdutorService.atualizarFoto({ usuarioId: req.user.id, arquivo: req.file, urlBase: urlBaseDaRequisicao(req) }),
   })),
 
   meuPerfilPublico: acao(async (req) => ({ data: await ProdutorService.meuPerfilPublico(req.user.id) })),

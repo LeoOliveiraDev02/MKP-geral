@@ -9,15 +9,10 @@
 // Leitura do token (Bearer ou cookie HttpOnly + CSRF) e verificação do JWT.
 const { lerToken, verificarSessao } = require('../utils/sessao');
 
-// Importa o DAO de Usuário para validar a existência do usuário no banco (PostgreSQL).
-const UsuarioDAO = require('../dao/UsuarioDAO');
 
-// Denylist de logout (UC13) + hash de tokens.
-const TokenRevogadoDAO = require('../dao/TokenRevogadoDAO');
-const { hashToken } = require('../utils/tokens');
 
 // Contexto do RLS (PostgreSQL): quem é o usuário das consultas desta requisição.
-const { runAsUser, runAsSystem } = require('../db/context');
+const { runAsUser } = require('../db/context');
 
 // Sessão no servidor: revogada, ociosa ou inexistente → 401.
 const SessaoService = require('../services/SessaoService');
@@ -53,21 +48,13 @@ async function authMiddleware(req, res, next) {
     // Se o token for inválido, adulterado ou estiver expirado, um erro será lançado e capturado pelo bloco 'catch'.
     const decoded = verificarSessao(token);
 
-    // Sessão encerrada (logout, "sair de todos", troca de senha) ou ociosa demais.
-    if (!(await SessaoService.validar(decoded))) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Sessão encerrada. Faça login novamente.'
-      });
-    }
-
-    // Busca o usuário no banco de dados utilizando o ID decodificado do token payload.
-    // Isso garante uma camada extra de segurança caso o usuário tenha sido excluído recentemente da plataforma.
-    const user = await runAsUser(decoded.id, () => UsuarioDAO.findById(decoded.id));
+    // Sessão ativa (não encerrada nem ociosa), token fora da denylist do logout
+    // (UC13) e usuário ainda existente — conferidos pelo SessaoService.
+    const { user, motivo } = await SessaoService.autenticar({ decoded, token });
     if (!user) {
       return res.status(401).json({
         status: 'error',
-        message: 'Acesso negado. Usuário não encontrado.'
+        message: motivo === 'usuario' ? 'Acesso negado. Usuário não encontrado.' : 'Sessão encerrada. Faça login novamente.'
       });
     }
 
@@ -81,15 +68,6 @@ async function authMiddleware(req, res, next) {
 
     // Claims da sessão (ex: `mfa` = passou pelo segundo fator; exigido no admin).
     req.auth = decoded;
-
-    // UC13: token revogado no logout não reentra (pós-condição do Encerrar Sessão).
-    // Denylist é tabela interna (RLS: só sistema).
-    if (await runAsSystem(() => TokenRevogadoDAO.existePorHash(hashToken(token)))) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Sessão encerrada. Faça login novamente.'
-      });
-    }
     
     // Chama a função 'next()' para sinalizar ao Express que este middleware concluiu sua tarefa com sucesso
     // e que a requisição pode avançar para o próximo manipulador (middleware ou controller).

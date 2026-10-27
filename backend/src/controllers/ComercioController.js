@@ -5,6 +5,7 @@
 
 const CotacaoService = require('../services/CotacaoService');
 const CestaService = require('../services/CestaService');
+const { urlBaseDaRequisicao } = require('../utils/urlBase');
 const { acao } = require('./ReputacaoController');
 
 const ComercioController = {
@@ -42,11 +43,11 @@ const ComercioController = {
   minhasCestas: acao(async (req) => ({ data: await CestaService.minhasCestas({ vendedorId: req.user.id }) })),
   criarCesta: acao(async (req) => ({
     message: 'Cesta publicada.',
-    data: await CestaService.criar({ vendedorId: req.user.id, body: req.body, arquivo: req.file, httpReq: req }),
+    data: await CestaService.criar({ vendedorId: req.user.id, body: req.body, arquivo: req.file, urlBase: urlBaseDaRequisicao(req) }),
   }), 201),
   editarCesta: acao(async (req) => ({
     message: 'Cesta atualizada.',
-    data: await CestaService.editar({ vendedorId: req.user.id, id: req.params.id, body: req.body, arquivo: req.file, httpReq: req }),
+    data: await CestaService.editar({ vendedorId: req.user.id, id: req.params.id, body: req.body, arquivo: req.file, urlBase: urlBaseDaRequisicao(req) }),
   })),
   assinantes: acao(async (req) => ({ data: await CestaService.assinantes({ vendedorId: req.user.id, id: req.params.id }) })),
   gerarPedidoDaEntrega: acao(async (req) => ({

@@ -15,9 +15,12 @@
 
 const crypto = require('crypto');
 const SessaoDAO = require('../dao/SessaoDAO');
+const UsuarioDAO = require('../dao/UsuarioDAO');
+const TokenRevogadoDAO = require('../dao/TokenRevogadoDAO');
 const NotificacaoService = require('./NotificacaoService');
-const { runAsSystem } = require('../db/context');
+const { runAsSystem, runAsUser } = require('../db/context');
 const { assinarSessao, DURACAO_SESSAO_MS } = require('../utils/sessao');
+const { hashToken } = require('../utils/tokens');
 const logger = require('../utils/logger');
 const { NotFoundError } = require('../errors/AppError');
 
@@ -98,6 +101,20 @@ class SessaoService {
     }
     if (agora - ultimoUso > TOQUE_MIN_MS) await SessaoDAO.tocar(sessao.id);
     return true;
+  }
+
+  /**
+   * Confere tudo o que torna um JWT já verificado utilizável: sessão ativa,
+   * token fora da denylist (logout) e usuário existente. Usado pelos
+   * middlewares de autenticação, que não falam com o banco diretamente.
+   * @returns {Promise<{ user?: object, motivo?: 'sessao' | 'revogado' | 'usuario' }>}
+   */
+  static async autenticar({ decoded, token }) {
+    if (!(await SessaoService.validar(decoded))) return { motivo: 'sessao' };
+    if (await runAsSystem(() => TokenRevogadoDAO.existePorHash(hashToken(token)))) return { motivo: 'revogado' };
+    const user = await runAsUser(decoded.id, () => UsuarioDAO.findById(decoded.id));
+    if (!user) return { motivo: 'usuario' };
+    return { user };
   }
 
   static async listar({ usuarioId, sessaoAtual }) {

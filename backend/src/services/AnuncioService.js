@@ -7,8 +7,8 @@
  * Nota de transação:
  * - Upload/remoção de arquivos ocorre ANTES ou DEPOIS da transação, nunca
  *   dentro de `db.transaction(async (tx) => ...)` (arquivos não fazem rollback).
- * - `httpReq` (Express) é usado SOMENTE para descobrir protocolo/host na
- *   montagem da URL pública do upload — nada de HTTP além disso.
+ * - `urlBase` (string, montada pelo controller) só compõe a URL pública do
+ *   upload — o service não conhece o `req` do Express.
  */
 
 const AnuncioDAO = require('../dao/AnuncioDAO');
@@ -317,7 +317,7 @@ class AnuncioService {
     };
   }
 
-  static async create({ anunciantePublic, body, files, httpReq }) {
+  static async create({ anunciantePublic, body, files, urlBase }) {
     const anuncianteId = anunciantePublic.id;
     const { nome, descricao, preco, categoriaId, enderecoId } = body;
 
@@ -374,11 +374,11 @@ class AnuncioService {
     }
 
     // Uploads ANTES da tx (I/O assíncrono fora da transação síncrona)
-    const primaryUrl = await ArmazenamentoService.uploadImage(primaryImageFile, httpReq);
+    const primaryUrl = await ArmazenamentoService.uploadImage(primaryImageFile, urlBase);
     const secondaryFiles = files && files.imagensSecundarias ? files.imagensSecundarias : [];
     const secondaryUrls = [];
     for (const file of secondaryFiles) {
-      secondaryUrls.push(await ArmazenamentoService.uploadImage(file, httpReq));
+      secondaryUrls.push(await ArmazenamentoService.uploadImage(file, urlBase));
     }
 
     // Domínio: monta o agregado e publica via anunciante — `publicar()` barra
@@ -444,7 +444,7 @@ class AnuncioService {
     return AnuncioDAO.findById(adId);
   }
 
-  static async update({ anunciantePublic, id, body, files, httpReq }) {
+  static async update({ anunciantePublic, id, body, files, urlBase }) {
     const anuncianteId = anunciantePublic.id;
     const { nome, descricao, preco, categoriaId, enderecoId } = body;
 
@@ -509,12 +509,12 @@ class AnuncioService {
     // Uploads ANTES da tx
     let newPrimaryUrl = null;
     if (newPrimaryFile) {
-      newPrimaryUrl = await ArmazenamentoService.uploadImage(newPrimaryFile, httpReq);
+      newPrimaryUrl = await ArmazenamentoService.uploadImage(newPrimaryFile, urlBase);
     }
     const newSecondaryFiles = files && files.imagensSecundarias ? files.imagensSecundarias : [];
     const newSecondaryUrls = [];
     for (const file of newSecondaryFiles) {
-      newSecondaryUrls.push(await ArmazenamentoService.uploadImage(file, httpReq));
+      newSecondaryUrls.push(await ArmazenamentoService.uploadImage(file, urlBase));
     }
 
     const oldPrimary = ad.imagens.find((img) => img.tipo === 'PRINCIPAL');

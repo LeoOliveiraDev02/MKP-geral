@@ -17,7 +17,7 @@ const { BadRequestError, ForbiddenError, NotFoundError } = require('../errors/Ap
 const MAX_FOTOS = 3;
 
 class AvaliacaoService {
-  static async criar({ autorId, pedidoId, anuncioId, nota, comentario, fotos = [], httpReq }) {
+  static async criar({ autorId, pedidoId, anuncioId, nota, comentario, fotos = [], urlBase }) {
     const notaNum = Number(nota);
     if (!Number.isInteger(notaNum) || notaNum < 1 || notaNum > 5) {
       throw new BadRequestError('A nota deve ser um número inteiro de 1 a 5.');
@@ -39,7 +39,7 @@ class AvaliacaoService {
     const urls = [];
     for (const foto of fotos) {
       try {
-        urls.push(await ArmazenamentoService.uploadImage(foto, httpReq));
+        urls.push(await ArmazenamentoService.uploadImage(foto, urlBase));
       } catch (err) {
         throw new BadRequestError(err.message);
       }

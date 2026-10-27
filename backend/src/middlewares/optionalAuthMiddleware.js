@@ -7,10 +7,7 @@
  */
 
 const { lerToken, verificarSessao } = require('../utils/sessao');
-const UsuarioDAO = require('../dao/UsuarioDAO');
-const TokenRevogadoDAO = require('../dao/TokenRevogadoDAO');
-const { hashToken } = require('../utils/tokens');
-const { runAsUser, runAsSystem } = require('../db/context');
+const { runAsUser } = require('../db/context');
 const SessaoService = require('../services/SessaoService');
 
 async function optionalAuthMiddleware(req, res, next) {
@@ -20,9 +17,7 @@ async function optionalAuthMiddleware(req, res, next) {
 
   try {
     const decoded = verificarSessao(token);
-    const revogado = await runAsSystem(() => TokenRevogadoDAO.existePorHash(hashToken(token)));
-    if (revogado || !(await SessaoService.validar(decoded))) return next();
-    const user = await runAsUser(decoded.id, () => UsuarioDAO.findById(decoded.id));
+    const { user } = await SessaoService.autenticar({ decoded, token });
     if (!user) return next();
     req.user = user;
     req.auth = decoded;
