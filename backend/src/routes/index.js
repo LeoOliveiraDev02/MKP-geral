@@ -15,6 +15,11 @@ const enderecoRotas = require('./enderecoRoutes');
 const categoriaRotas = require('./categoriaRoutes');
 const anuncioRotas = require('./anuncioRoutes');
 const favoritoRotas = require('./favoritoRoutes');
+const pedidoRotas = require('./pedidoRoutes');
+const notificacaoRotas = require('./notificacaoRoutes');
+const reputacaoRotas = require('./reputacaoRoutes');
+const comunicacaoRotas = require('./comunicacaoRoutes');
+const comercioRotas = require('./comercioRoutes');
 
 // Cria uma nova instância global de roteador (Router).
 const router = express.Router();
@@ -36,6 +41,19 @@ router.use('/addresses', enderecoRotas);
 router.use('/categories', categoriaRotas);
 router.use('/ads', anuncioRotas);
 router.use('/favorites', favoritoRotas);
+router.use('/orders', pedidoRotas);
+router.use('/notifications', notificacaoRotas);
+router.use('/reviews', reputacaoRotas.reviews);
+router.use('/questions', reputacaoRotas.questions);
+router.use('/producers', reputacaoRotas.producers);
+router.use('/verification', reputacaoRotas.verification);
+router.use('/chats', comunicacaoRotas.chats);
+router.use('/claims', comunicacaoRotas.claims);
+router.use('/admin', comunicacaoRotas.admin);
+router.use('/quotes', comercioRotas.quotes);
+router.use('/baskets', comercioRotas.baskets);
+router.use('/subscriptions', comercioRotas.subscriptions);
+router.use('/payments', require('./pagamentoRoutes'));
 
 // Exporta o roteador central unificado para que o arquivo principal do servidor (app.js ou server.js)
 // possa montá-lo sob o caminho base da API (geralmente sob '/api' ou '/api/v1').

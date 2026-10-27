@@ -12,6 +12,8 @@
  */
 
 const AnuncioDAO = require('../dao/AnuncioDAO');
+const EventoAnuncioDAO = require('../dao/EventoAnuncioDAO');
+const GeocodificacaoService = require('./GeocodificacaoService');
 const ImagemDAO = require('../dao/ImagemDAO');
 const EnderecoDAO = require('../dao/EnderecoDAO');
 const CategoriaDAO = require('../dao/CategoriaDAO');
@@ -32,20 +34,233 @@ const {
 } = require('../domain/factories');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../errors/AppError');
 
+const UNIDADES = ['un', 'kg', 'g', 'dz', 'maco', 'bandeja', 'litro', 'saca', 'caixa', 'pe'];
+const CERTIFICACOES = ['ORGANICO', 'SIF', 'SIE', 'SIM', 'SISBI'];
+const ORDENACOES = ['recentes', 'menor_preco', 'maior_preco', 'mais_avaliados', 'proximos'];
+
+function numeroOuNulo(valor) {
+  if (valor === undefined || valor === null || valor === '') return null;
+  const n = Number(valor);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function booleano(valor) {
+  if (valor === undefined) return undefined;
+  return valor === true || valor === 'true' || valor === '1' || valor === 'on';
+}
+
+function lerJson(valor, campo) {
+  if (valor === undefined || valor === '') return undefined;
+  if (typeof valor !== 'string') return valor;
+  try {
+    return JSON.parse(valor);
+  } catch {
+    throw new BadRequestError(`O campo ${campo} deve ser um JSON válido.`);
+  }
+}
+
+/**
+ * Lê e valida os campos de venda do corpo (multipart chega como string).
+ * Campo ausente = `undefined` (na edição, mantém o valor atual).
+ */
+function lerCamposVenda(body, precoBase) {
+  const venda = {};
+
+  if (body.unidade !== undefined) {
+    if (!UNIDADES.includes(body.unidade)) {
+      throw new BadRequestError(`Unidade inválida. Use uma de: ${UNIDADES.join(', ')}.`);
+    }
+    venda.unidade = body.unidade;
+  }
+
+  if (body.estoque !== undefined) {
+    const estoque = numeroOuNulo(body.estoque);
+    if (estoque !== null && (!Number.isInteger(estoque) || estoque < 0)) {
+      throw new BadRequestError('O estoque deve ser um número inteiro maior ou igual a zero.');
+    }
+    venda.estoque = estoque;
+  }
+
+  if (body.pesoKg !== undefined) {
+    const peso = numeroOuNulo(body.pesoKg);
+    if (peso !== null && (Number.isNaN(peso) || peso <= 0)) {
+      throw new BadRequestError('O peso deve ser maior que zero.');
+    }
+    venda.pesoKg = peso;
+  }
+
+  if (body.precoPromocional !== undefined) {
+    const promo = numeroOuNulo(body.precoPromocional);
+    if (promo !== null && (Number.isNaN(promo) || promo <= 0 || promo >= precoBase)) {
+      throw new BadRequestError('O preço promocional deve ser maior que zero e menor que o preço normal.');
+    }
+    venda.precoPromocional = promo;
+  }
+
+  if (body.promocaoAte !== undefined) {
+    const ate = body.promocaoAte || null;
+    if (ate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+      throw new BadRequestError('A data de fim da promoção deve estar no formato AAAA-MM-DD.');
+    }
+    venda.promocaoAte = ate;
+  }
+
+  venda.permiteEntrega = booleano(body.permiteEntrega);
+  venda.permiteRetirada = booleano(body.permiteRetirada);
+  if (venda.permiteEntrega === false && venda.permiteRetirada === false) {
+    throw new BadRequestError('O anúncio precisa aceitar entrega, retirada ou os dois.');
+  }
+
+  const atacado = lerJson(body.atacado, 'atacado');
+  if (atacado !== undefined) {
+    if (!Array.isArray(atacado)) throw new BadRequestError('O campo atacado deve ser uma lista de faixas.');
+    const vistos = new Set();
+    venda.atacado = atacado.map((faixa) => {
+      const quantidadeMinima = Number(faixa.quantidadeMinima ?? faixa.quantidade_minima);
+      const preco = Number(faixa.preco);
+      if (!Number.isInteger(quantidadeMinima) || quantidadeMinima < 2) {
+        throw new BadRequestError('Cada faixa de atacado precisa de uma quantidade mínima inteira a partir de 2.');
+      }
+      if (!Number.isFinite(preco) || preco <= 0 || preco >= precoBase) {
+        throw new BadRequestError('O preço de atacado deve ser maior que zero e menor que o preço normal.');
+      }
+      if (vistos.has(quantidadeMinima)) throw new BadRequestError('Há faixas de atacado com a mesma quantidade mínima.');
+      vistos.add(quantidadeMinima);
+      return { quantidadeMinima, preco };
+    });
+  }
+
+  const certs = lerJson(body.certificacoes, 'certificacoes');
+  if (certs !== undefined) {
+    if (!Array.isArray(certs)) throw new BadRequestError('O campo certificacoes deve ser uma lista.');
+    const tipos = new Set();
+    venda.certificacoes = certs.map((c) => {
+      const tipo = String(c.tipo || '').toUpperCase();
+      if (!CERTIFICACOES.includes(tipo)) {
+        throw new BadRequestError(`Certificação inválida. Use uma de: ${CERTIFICACOES.join(', ')}.`);
+      }
+      if (tipos.has(tipo)) throw new BadRequestError('Certificação repetida.');
+      tipos.add(tipo);
+      return { tipo, numero: c.numero ? String(c.numero).trim().slice(0, 60) : null };
+    });
+  }
+
+  return venda;
+}
+
 class AnuncioService {
   static async list(query) {
     const parsedPage = parseInt(query.page) || 1;
-    const parsedLimit = parseInt(query.limit) || 10;
+    const parsedLimit = Math.min(parseInt(query.limit) || 10, 50);
     // Querystring usa `categoriaId` (PT); aceita `categoryId` (EN) como alias.
     const rawCategory = query.categoriaId ?? query.categoryId;
     const search = query.search || null;
+    const sort = ORDENACOES.includes(query.sort) ? query.sort : 'recentes';
+    const num = (v) => (v === undefined || v === '' ? undefined : Number(v));
+    const zona = query.zona ? String(query.zona).toUpperCase() : undefined;
+    if (zona && zona !== 'URBANA' && zona !== 'RURAL') {
+      throw new BadRequestError('A zona deve ser URBANA ou RURAL.');
+    }
     return AnuncioDAO.findAll({
       page: parsedPage,
       limit: parsedLimit,
       categoryId: rawCategory ? parseInt(rawCategory) : null,
+      anuncianteId: query.anuncianteId ? parseInt(query.anuncianteId) : null,
       search,
       status: 'ATIVO',
+      precoMin: num(query.precoMin),
+      precoMax: num(query.precoMax),
+      uf: query.uf || undefined,
+      cidade: query.cidade || undefined,
+      zona,
+      ofertas: query.ofertas === 'true' || query.ofertas === '1',
+      lat: num(query.lat),
+      lng: num(query.lng),
+      raioKm: num(query.raioKm),
+      excluirIds: query.excluir ? String(query.excluir).split(',').map(Number).filter(Number.isInteger) : [],
+      sort,
     });
+  }
+
+  /** Sugestões enquanto o usuário digita (mínimo 2 letras). */
+  static async suggest({ q }) {
+    const termo = String(q || '').trim();
+    if (termo.length < 2) return { produtos: [], categorias: [] };
+    return AnuncioDAO.suggest(termo.slice(0, 60));
+  }
+
+  /** Registra visualização ou clique no WhatsApp (anônimo ou logado). */
+  static async registrarEvento({ id, tipo, sessao, usuarioId }) {
+    if (tipo !== 'VISUALIZACAO' && tipo !== 'CLIQUE_WHATSAPP') {
+      throw new BadRequestError('Tipo de evento inválido.');
+    }
+    const ad = await AnuncioDAO.findById(id);
+    if (!ad) throw new NotFoundError('Anúncio indisponível ou não encontrado.');
+    // O próprio vendedor olhando o anúncio não conta como visita
+    if (usuarioId && usuarioId === ad.anunciante_id) return;
+    await EventoAnuncioDAO.create({
+      anuncioId: ad.id,
+      tipo,
+      usuarioId: usuarioId || null,
+      sessao: sessao ? String(sessao).slice(0, 64) : null,
+    });
+  }
+
+  /** "Quem viu também viu"; sem histórico suficiente, completa com a mesma categoria. */
+  static async recomendacoes({ id, limit = 8 }) {
+    const ad = await AnuncioDAO.findById(id);
+    if (!ad) throw new NotFoundError('Anúncio indisponível ou não encontrado.');
+    const co = await runAsSystem(() => EventoAnuncioDAO.coVisualizados(ad.id, limit));
+    let itens = await AnuncioDAO.findManyByIds(co.map((r) => r.anuncio_id));
+    if (itens.length < limit) {
+      const { data } = await AnuncioDAO.findAll({
+        page: 1,
+        limit: limit - itens.length,
+        categoryId: ad.categoria_id,
+        status: 'ATIVO',
+        excluirIds: [ad.id, ...itens.map((i) => i.id)],
+      });
+      itens = itens.concat(data);
+    }
+    return { anuncios: itens, baseado_em_visitas: co.length > 0 };
+  }
+
+  /** Painel do vendedor: visitas e cliques por anúncio + série diária. */
+  static async estatisticas({ anuncianteId, dias }) {
+    const periodo = Math.min(Math.max(parseInt(dias) || 30, 1), 365);
+    const porAnuncio = await EventoAnuncioDAO.statsByAnunciante(anuncianteId, periodo);
+    const serie = await EventoAnuncioDAO.seriePorDia(anuncianteId, periodo);
+    const soma = (campo) => porAnuncio.reduce((acc, r) => acc + r[campo], 0);
+    return {
+      periodo_dias: periodo,
+      totais: {
+        visualizacoes: soma('visualizacoes_periodo'),
+        cliques_whatsapp: soma('cliques_periodo'),
+      },
+      por_anuncio: porAnuncio,
+      serie,
+    };
+  }
+
+  /** Pausa (some da vitrine) ou reativa um anúncio. */
+  static async alterarStatus({ anunciantePublic, id, status }) {
+    if (status !== 'ATIVO' && status !== 'PAUSADO') {
+      throw new BadRequestError('Status inválido. Use ATIVO ou PAUSADO.');
+    }
+    const ad = await runAsSystem(() => AnuncioDAO.findById(id, true));
+    if (!ad) throw new NotFoundError('Anúncio não encontrado.');
+    if (ad.anunciante_id !== anunciantePublic.id) {
+      throw new ForbiddenError('Você não possui permissão para alterar anúncios de outros usuários.');
+    }
+    if (ad.status !== 'ATIVO' && ad.status !== 'PAUSADO') {
+      throw new BadRequestError('Só é possível pausar ou reativar anúncios publicados.');
+    }
+    await AnuncioDAO.setStatus(id, status);
+    logger.audit(status === 'PAUSADO' ? 'Anúncio pausado' : 'Anúncio reativado', {
+      userId: anunciantePublic.id,
+      anuncioId: Number(id),
+    });
+    return { status };
   }
 
   static async get({ id }) {
@@ -55,7 +270,7 @@ class AnuncioService {
     }
 
     // RF07/RS01 — link WhatsApp (redação contratada na resposta da API).
-    const whatsappMsg = `Olá ${ad.vendedor_nome}, vi seu anúncio do produto "${ad.nome}" por R$ ${ad.preco.toFixed(2)} no Marketplace e gostaria de negociar.`;
+    const whatsappMsg = `Olá ${ad.vendedor_nome}, vi seu anúncio do produto "${ad.nome}" por R$ ${ad.preco_efetivo.toFixed(2)} no Marketplace e gostaria de negociar.`;
     const linkWhatsapp = generateWhatsAppLink(ad.vendedor_telefone, whatsappMsg);
 
     return {
@@ -81,8 +296,24 @@ class AnuncioService {
         nome: `${ad.vendedor_nome} ${ad.vendedor_sobrenome}`,
         telefone: ad.vendedor_telefone,
         link_whatsapp: linkWhatsapp,
+        foto_url: ad.vendedor_foto,
+        desde: ad.vendedor_desde,
+        verificado: ad.vendedor_verificado,
       },
       imagens: ad.imagens,
+      unidade: ad.unidade,
+      estoque: ad.estoque,
+      peso_kg: ad.peso_kg,
+      preco_promocional: ad.preco_promocional,
+      promocao_ate: ad.promocao_ate,
+      em_oferta: ad.em_oferta,
+      preco_efetivo: ad.preco_efetivo,
+      permite_entrega: ad.permite_entrega,
+      permite_retirada: ad.permite_retirada,
+      atacado: ad.atacado,
+      certificacoes: ad.certificacoes,
+      nota_media: ad.nota_media,
+      total_avaliacoes: ad.total_avaliacoes,
     };
   }
 
@@ -103,6 +334,8 @@ class AnuncioService {
     if (!category) {
       throw new BadRequestError('A categoria informada não existe.');
     }
+
+    const venda = lerCamposVenda(body, parsedPreco);
 
     // RN04 — imagem principal obrigatória
     const primaryImageFile = files && files.imagemPrincipal ? files.imagemPrincipal[0] : null;
@@ -190,12 +423,17 @@ class AnuncioService {
         nome: anuncioEnt.produto.nome,
         descricao: anuncioEnt.produto.descricao,
         preco: anuncioEnt.produto.preco,
+        ...venda,
       }, tx);
       for (const img of anuncioEnt.imagens) {
         await ImagemDAO.create({ anuncioId: id, url: img.url, tipo: img.tipo, ordem: img.ordem }, tx);
       }
+      if (venda.atacado) await AnuncioDAO.replaceAtacado(id, venda.atacado, tx);
+      if (venda.certificacoes) await AnuncioDAO.replaceCertificacoes(id, venda.certificacoes, tx);
       return id;
     });
+
+    if (!resolvedEnderecoId) GeocodificacaoService.agendarPendentes(anuncianteId);
 
     logger.audit('Novo anúncio de produto publicado', {
       userId: anuncianteId,
@@ -242,6 +480,12 @@ class AnuncioService {
     const address = await runAsSystem(() => EnderecoDAO.findById(enderecoId));
     if (!address || address.cliente_id !== anuncianteId) {
       throw new BadRequestError('O endereço informado não existe ou não pertence a você.');
+    }
+
+    const venda = lerCamposVenda(body, parsedPreco);
+    // Promoção existente precisa continuar abaixo de um novo preço base
+    if (venda.precoPromocional === undefined && ad.preco_promocional !== null && ad.preco_promocional >= parsedPreco) {
+      throw new BadRequestError('O preço promocional atual ficaria maior que o novo preço. Ajuste ou remova a promoção.');
     }
 
     // Normaliza lista de exclusão (string "1,2" ou array — artefato do multipart)
@@ -305,8 +549,10 @@ class AnuncioService {
 
     await getDb().transaction(async (tx) => {
       await AnuncioDAO.update(id, {
-        categoriaId, enderecoId, nome, descricao, preco: parsedPreco,
+        categoriaId, enderecoId, nome, descricao, preco: parsedPreco, ...venda,
       }, tx);
+      if (venda.atacado) await AnuncioDAO.replaceAtacado(id, venda.atacado, tx);
+      if (venda.certificacoes) await AnuncioDAO.replaceCertificacoes(id, venda.certificacoes, tx);
 
       if (newPrimaryUrl) {
         if (oldPrimary) {
@@ -389,8 +635,8 @@ class AnuncioService {
     const parsedLimit = parseInt(query.limit) || 10;
     const status = query.status || 'ATIVO';
 
-    if (status !== 'ATIVO' && status !== 'EM_LIXEIRA') {
-      throw new BadRequestError('Status inválido. Escolha ATIVO ou EM_LIXEIRA.');
+    if (status !== 'ATIVO' && status !== 'PAUSADO' && status !== 'EM_LIXEIRA') {
+      throw new BadRequestError('Status inválido. Escolha ATIVO, PAUSADO ou EM_LIXEIRA.');
     }
 
     return AnuncioDAO.findAll({ page: parsedPage, limit: parsedLimit, anuncianteId, status });
@@ -405,5 +651,8 @@ class AnuncioService {
     return { anuncios_excluidos_definitivamente: deletedCount };
   }
 }
+
+AnuncioService.UNIDADES = UNIDADES;
+AnuncioService.CERTIFICACOES = CERTIFICACOES;
 
 module.exports = AnuncioService;

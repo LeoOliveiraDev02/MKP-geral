@@ -20,7 +20,7 @@ class EnderecoController {
   /** @route POST /addresses */
   static async create(req, res, next) {
     try {
-      const data = await EnderecoService.create({ userId: req.user.id, ...req.body });
+      const data = await EnderecoService.create({ ...req.body, userId: req.user.id });
       return res.status(201).json({
         status: 'success',
         message: 'Endereço cadastrado com sucesso.',
@@ -34,7 +34,7 @@ class EnderecoController {
   /** @route PUT /addresses/:id */
   static async update(req, res, next) {
     try {
-      const data = await EnderecoService.update({ userId: req.user.id, id: req.params.id, ...req.body });
+      const data = await EnderecoService.update({ ...req.body, userId: req.user.id, id: req.params.id });
       return res.status(200).json({
         status: 'success',
         message: 'Endereço atualizado com sucesso.',

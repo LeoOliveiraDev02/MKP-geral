@@ -43,3 +43,16 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Segredos e chaves (nunca versionar)
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Backups do banco (dados pessoais!)
+backups/
+*.dump
+*.dump.enc

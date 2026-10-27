@@ -1,3 +1,7 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Faixas com rolagem horizontal interna, sem barra visível (ex.: navegação no celular). */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

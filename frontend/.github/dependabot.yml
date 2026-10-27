@@ -1,0 +1,17 @@
+# Dependabot do front (vale quando esta pasta virar um repositório no GitHub).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      patch-e-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gradle
+    directory: /android
+    schedule:
+      interval: monthly

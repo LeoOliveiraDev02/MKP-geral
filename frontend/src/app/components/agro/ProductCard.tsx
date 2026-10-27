@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Heart, ShoppingCart, MapPin, Check } from 'lucide-react';
+import { Heart, ShoppingCart, MapPin, Check, Star, BadgeCheck, Zap } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Product, formatCurrency } from './data';
+import { Product, formatCurrency, UNIDADES } from './data';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { C, FONT } from './theme';
 
 type ProductCardProps = {
   product: Product;
@@ -18,8 +19,11 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
   const [hovered, setHovered] = useState(false);
   const [added, setAdded] = useState(false);
 
+  const semEstoque = product.estoque === 0;
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (semEstoque) return;
     onAddToCart(product);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
@@ -42,20 +46,16 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered
-          ? 'rgba(20, 50, 28, 0.9)'
-          : 'rgba(10, 28, 15, 0.8)',
-        backdropFilter: 'blur(20px)',
-        border: hovered
-          ? '1px solid rgba(74, 250, 130, 0.4)'
-          : '1px solid rgba(74, 250, 130, 0.12)',
-        borderRadius: '16px',
+        background: C.surface,
+        border: `1px solid ${hovered ? '#D9D4CA' : C.border}`,
+        borderRadius: '14px',
         overflow: 'hidden',
         cursor: 'pointer',
         transition: 'background 0.3s, border-color 0.3s, box-shadow 0.3s',
         boxShadow: hovered
-          ? '0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(74, 250, 130, 0.1)'
-          : '0 4px 16px rgba(0,0,0,0.3)',
+          ? '0 12px 28px rgba(37,37,34,0.10)'
+          : '0 1px 2px rgba(37,37,34,0.04)',
+        fontFamily: FONT,
         position: 'relative',
       }}
     >
@@ -73,25 +73,31 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
           }}
         />
 
-        {/* Gradient overlay */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(4, 18, 8, 0.6) 100%)',
-        }} />
-
-        {/* Zona do endereço do anúncio */}
-        {product.zona && (
-          <div style={{
-            position: 'absolute', top: '10px', left: '10px',
-            background: product.zona === 'RURAL'
-              ? 'linear-gradient(135deg, #16a34a, #4afa82)'
-              : 'linear-gradient(135deg, #0891b2, #38bdf8)',
-            color: product.zona === 'RURAL' ? '#000' : '#fff',
-            fontSize: '10px', fontWeight: 700,
-            padding: '3px 8px', borderRadius: '6px',
-            letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif",
-          }}>
-            {product.zona}
+        {/* Oferta e zona do endereço do anúncio */}
+        <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'flex', gap: '6px' }}>
+          {product.emOferta && product.precoPromocional !== null && (
+            <div style={{
+              background: C.orange, color: '#fff', fontSize: '10px', fontWeight: 700,
+              padding: '3px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '3px',
+            }}>
+              <Zap size={11} /> -{Math.round((1 - product.precoPromocional / product.price) * 100)}%
+            </div>
+          )}
+          {product.zona && (
+            <div style={{
+              background: product.zona === 'RURAL' ? '#F9B95C' : C.surface,
+              color: C.graphite,
+              fontSize: '10px', fontWeight: 700,
+              padding: '3px 8px', borderRadius: '6px',
+              letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif",
+            }}>
+              {product.zona}
+            </div>
+          )}
+        </div>
+        {semEstoque && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ background: C.graphite, color: '#fff', fontSize: '12px', fontWeight: 700, padding: '5px 12px', borderRadius: '999px' }}>Sem estoque</span>
           </div>
         )}
 
@@ -102,9 +108,8 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
           whileTap={{ scale: 0.85 }}
           style={{
             position: 'absolute', top: '10px', right: '10px',
-            background: isFavorite ? 'rgba(74, 250, 130, 0.2)' : 'rgba(0,0,0,0.5)',
-            backdropFilter: 'blur(10px)',
-            border: `1px solid ${isFavorite ? 'rgba(74, 250, 130, 0.5)' : 'rgba(255,255,255,0.2)'}`,
+            background: isFavorite ? C.orangeSoft : 'rgba(255,255,255,0.92)',
+            border: `1px solid ${isFavorite ? C.orange : C.border}`,
             borderRadius: '50%', width: '36px', height: '36px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', transition: 'all 0.2s',
@@ -119,8 +124,8 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
           >
             <Heart
               size={16}
-              color={isFavorite ? '#4afa82' : '#fff'}
-              fill={isFavorite ? '#4afa82' : 'none'}
+              color={isFavorite ? C.orange : C.graphite}
+              fill={isFavorite ? C.orange : 'none'}
             />
           </motion.span>
         </motion.button>
@@ -131,7 +136,7 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
         {/* Category */}
         <div style={{
           fontSize: '11px',
-          color: '#4afa82',
+          color: C.brown, fontWeight: 600,
           marginBottom: '4px',
           display: 'flex', alignItems: 'center', gap: '4px',
           fontFamily: "'Inter', sans-serif",
@@ -143,7 +148,7 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
         <h3 style={{
           fontSize: '14px',
           fontWeight: 600,
-          color: '#fff',
+          color: C.text,
           marginBottom: '4px',
           lineHeight: 1.3,
           display: '-webkit-box',
@@ -158,45 +163,60 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
         {/* Producer */}
         <div style={{
           fontSize: '12px',
-          color: 'rgba(255,255,255,0.5)',
+          color: C.muted,
           marginBottom: '8px',
           display: 'flex', alignItems: 'center', gap: '4px',
           fontFamily: "'Inter', sans-serif",
         }}>
           <div style={{
             width: '18px', height: '18px',
-            background: 'linear-gradient(135deg, #0d3a1a, #1a5c38)',
+            background: C.orangeSoft,
             borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '8px', fontWeight: 700, color: '#4afa82',
+            fontSize: '8px', fontWeight: 700, color: C.brown,
             flexShrink: 0,
           }}>
             {product.producerAvatar}
           </div>
-          <span>{product.producer}</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.producer}</span>
+          {product.vendedorVerificado && (
+            <span title="Produtor verificado" style={{ display: 'flex', color: C.success, flexShrink: 0 }}><BadgeCheck size={14} /></span>
+          )}
         </div>
 
         {/* Location */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '3px',
           marginBottom: '10px',
-          color: 'rgba(255,255,255,0.4)', fontSize: '11px',
+          color: C.muted, fontSize: '11px',
           fontFamily: "'Inter', sans-serif",
         }}>
           <MapPin size={11} />
           <span>{product.location}</span>
+          {product.distanciaKm != null && <span style={{ color: C.brown, fontWeight: 600 }}>· {product.distanciaKm.toLocaleString('pt-BR')} km</span>}
+          {product.notaMedia !== null && product.totalAvaliacoes > 0 && (
+            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '2px', color: C.text, fontWeight: 600 }}>
+              <Star size={11} color={C.orange} fill={C.orange} /> {product.notaMedia.toLocaleString('pt-BR')}
+              <span style={{ color: C.muted, fontWeight: 400 }}>({product.totalAvaliacoes})</span>
+            </span>
+          )}
         </div>
 
         {/* Price */}
-        <div style={{ marginBottom: '12px' }}>
+        <div style={{ marginBottom: '12px', minHeight: '44px' }}>
+          {product.emOferta && (
+            <div style={{ fontSize: '12px', color: C.muted, textDecoration: 'line-through' }}>{formatCurrency(product.price)}</div>
+          )}
           <span style={{
             fontSize: '20px',
             fontWeight: 700,
-            color: '#4afa82',
-            fontFamily: "'Space Grotesk', sans-serif",
+            color: C.orange,
           }}>
-            {formatCurrency(product.price)}
+            {formatCurrency(product.precoEfetivo)}
           </span>
+          {product.unidade !== 'un' && (
+            <span style={{ fontSize: '12px', color: C.muted }}> / {UNIDADES[product.unidade]?.curto}</span>
+          )}
         </div>
 
         {/* Add to cart button */}
@@ -206,22 +226,19 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
           style={{
             width: '100%',
             padding: '10px',
-            background: added
-              ? 'rgba(74, 250, 130, 0.2)'
-              : 'linear-gradient(135deg, #16a34a, #4afa82)',
-            border: added ? '1px solid #4afa82' : 'none',
+            background: added ? C.success : semEstoque ? C.border : C.orange,
+            border: 'none',
             borderRadius: '10px',
-            color: added ? '#4afa82' : '#000',
+            color: semEstoque ? C.muted : '#fff',
             fontSize: '13px',
-            fontWeight: 700,
-            cursor: 'pointer',
+            fontWeight: 600,
+            cursor: semEstoque ? 'not-allowed' : 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '6px',
             transition: 'all 0.2s',
             fontFamily: "'Inter', sans-serif",
-            boxShadow: added ? 'none' : '0 4px 15px rgba(74, 250, 130, 0.3)',
           }}
         >
           <AnimatePresence mode="wait" initial={false}>
@@ -234,7 +251,7 @@ export function ProductCard({ product, isFavorite, onFavorite, onAddToCart, onCl
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               {added ? <Check size={15} /> : <ShoppingCart size={15} />}
-              {added ? 'Adicionado!' : 'Adicionar ao Carrinho'}
+              {added ? 'Adicionado!' : semEstoque ? 'Sem estoque' : 'Adicionar ao Carrinho'}
             </motion.span>
           </AnimatePresence>
         </motion.button>

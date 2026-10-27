@@ -12,13 +12,20 @@
  * então rodam em contexto de sistema (`runAsSystem`, ver final do arquivo).
  */
 
-const bcrypt = require('bcryptjs');
+const { hashSenha, compararFicticio, precisaRehash } = require('../utils/senha');
+const { verificarSenhaNova } = require('../utils/politicaSenha');
 const jwt = require('jsonwebtoken');
+const { assinarDesafioMfa } = require('../utils/sessao');
+const { jwtSecret } = require('../config/seguranca');
+const MfaService = require('./MfaService');
+const SessaoService = require('./SessaoService');
+const NotificacaoService = require('./NotificacaoService');
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 
 const UsuarioDAO = require('../dao/UsuarioDAO');
 const EnderecoDAO = require('../dao/EnderecoDAO');
+const GeocodificacaoService = require('./GeocodificacaoService');
 const RecuperacaoSenhaDAO = require('../dao/RecuperacaoSenhaDAO');
 const BloqueioLoginDAO = require('../dao/BloqueioLoginDAO');
 const TokenRevogadoDAO = require('../dao/TokenRevogadoDAO');
@@ -35,16 +42,30 @@ function isUniqueEmailViolation(error) {
   return isUniqueViolation(error, 'Usuario_email_unique');
 }
 
-function signToken(id, email) {
-  return jwt.sign(
-    // jti garante unicidade por sessão: dois logins no mesmo segundo não
-    // geram o mesmo token (iat tem granularidade de segundos), então o
-    // logout (denylist) revoga só a sessão usada.
-    { id, email, jti: crypto.randomUUID() },
-    process.env.JWT_SECRET || 'secret_key_default',
-    { expiresIn: '24h' }
-  );
+/**
+ * Sessão ou desafio MFA: contas com verificação em duas etapas ativa não
+ * recebem a sessão direto — só um `mfaToken` (5 min) para concluir com o código.
+ * A sessão é registrada no servidor (SessaoService) com IP e User-Agent.
+ */
+async function sessaoOuDesafio(user, { ip, userAgent } = {}) {
+  if (await MfaService.ativo(user.id)) {
+    return { mfaRequired: true, mfaToken: assinarDesafioMfa(user.id) };
+  }
+  return { token: await SessaoService.criar({ usuario: user, ip, userAgent }) };
 }
+
+/**
+ * O código de recuperação de senha nunca é gravado em claro: guardamos um
+ * HMAC (chave do servidor) amarrado ao usuário.
+ */
+function hashCodigoRecuperacao(usuarioId, codigo) {
+  return crypto
+    .createHmac('sha256', jwtSecret())
+    .update(`reset-senha:${usuarioId}:${String(codigo).trim()}`)
+    .digest('hex');
+}
+
+const MSG_RESET_INVALIDO = 'E-mail inválido ou código de verificação incorreto/expirado.';
 
 // Cliente reaproveitado entre requisições (cacheia as chaves públicas do Google).
 let googleClient = null;
@@ -71,7 +92,7 @@ class AutenticacaoService {
    * Registra usuário + endereço de forma atômica.
    * @returns {Promise<{token: string, usuario: Object}>}
    */
-  static async register({ nome, sobrenome, email, telefone, senha, rua, numero, bairro, cep, cidade, uf, zona, ip }) {
+  static async register({ nome, sobrenome, email, telefone, senha, rua, numero, bairro, cep, cidade, uf, zona, ip, userAgent }) {
     // 1. Campos obrigatórios do usuário (RN02)
     if (!nome || !sobrenome || !email || !telefone || !senha) {
       throw new BadRequestError('Todos os campos obrigatórios de cadastro (nome, sobrenome, email, telefone, senha e endereço completo) devem ser preenchidos.');
@@ -89,6 +110,8 @@ class AutenticacaoService {
     if (!validatePassword(senha)) {
       throw new BadRequestError('A senha deve conter no mínimo 8 caracteres, incluindo letras maiúsculas, minúsculas, números e caracteres especiais.');
     }
+    // Senha comum, com dados pessoais ou vazada
+    await verificarSenhaNova(senha, { email, nome, sobrenome });
 
     // Domínio: a completude do endereço é invariante da entidade Endereco.
     const enderecoEnt = new Endereco({ rua, numero, bairro, cep, cidade, uf, zona });
@@ -110,7 +133,7 @@ class AutenticacaoService {
     }
 
     // Hash FORA da transação (CPU-bound; não segura a conexão da tx)
-    const senhaHash = await bcrypt.hash(senha, 10);
+    const senhaHash = await hashSenha(senha);
 
     // Domínio: entidade carrega os dados do novo usuário.
     const usuarioEnt = new Usuario({ nome, sobrenome, email, telefone, senhaHash });
@@ -146,9 +169,10 @@ class AutenticacaoService {
       throw error;
     }
 
-    const token = signToken(clienteId, email);
+    const token = await SessaoService.criar({ usuario: { id: clienteId, email }, ip, userAgent });
 
     logger.audit('Novo usuário cadastrado com sucesso', { userId: clienteId, email, ip });
+    GeocodificacaoService.agendarPendentes(clienteId);
 
     return {
       token,
@@ -162,7 +186,7 @@ class AutenticacaoService {
    * Respostas de credencial seguem genéricas (anti-enumeração).
    * @returns {Promise<{token: string, usuario: Object}>}
    */
-  static async login({ email, senha }) {
+  static async login({ email, senha, ip, userAgent }) {
     if (!email || !senha) {
       throw new BadRequestError('E-mail e senha são obrigatórios.');
     }
@@ -182,6 +206,7 @@ class AutenticacaoService {
 
     const user = await UsuarioDAO.findByEmail(email);
     const usuarioEnt = user ? reconstituirUsuario(user) : null;
+    if (!usuarioEnt) compararFicticio(senha);
     if (!usuarioEnt || !usuarioEnt.autenticar(email, senha)) {
       bloqueio.registrarFalha({ limite, minutos });
       await BloqueioLoginDAO.salvar({
@@ -195,12 +220,21 @@ class AutenticacaoService {
     // Sucesso zera a contagem (fim da sequência de falhas)
     await BloqueioLoginDAO.deleteByEmail(email);
 
-    const token = signToken(user.id, user.email);
+    // Migra o hash para o formato atual (pepper/custo) enquanto temos a senha em mãos.
+    if (precisaRehash(user.senha_hash)) {
+      await UsuarioDAO.updatePassword(user.id, await hashSenha(senha));
+    }
 
-    logger.info('Usuário autenticado com sucesso', { userId: user.id, email: user.email });
+    const sessao = await sessaoOuDesafio(user, { ip, userAgent });
+    if (sessao.mfaRequired) {
+      logger.info('Senha correta; aguardando código MFA', { userId: user.id, ip });
+      return sessao;
+    }
+
+    logger.audit('Login', { userId: user.id, ip });
 
     return {
-      token,
+      token: sessao.token,
       usuario: {
         id: user.id,
         nome: user.nome,
@@ -220,7 +254,7 @@ class AutenticacaoService {
    *   hash aleatório — o usuário pode definir uma via "Esqueci minha senha".
    * @returns {Promise<{token: string, usuario: Object, novoUsuario: boolean}>}
    */
-  static async loginWithGoogle({ credential, ip }) {
+  static async loginWithGoogle({ credential, ip, userAgent }) {
     if (!process.env.GOOGLE_CLIENT_ID) {
       throw new BadRequestError('Login com Google não está configurado no servidor.');
     }
@@ -246,7 +280,7 @@ class AutenticacaoService {
     if (!user) {
       const nome = payload.given_name || payload.name || email.split('@')[0];
       const sobrenome = payload.family_name || '-';
-      const senhaHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      const senhaHash = await hashSenha(crypto.randomBytes(32).toString('hex'));
 
       try {
         const id = await UsuarioDAO.create({ nome, sobrenome, email, telefone: '', senhaHash });
@@ -263,12 +297,16 @@ class AutenticacaoService {
     // Login bem-sucedido também encerra uma sequência de falhas (RN19)
     await BloqueioLoginDAO.deleteByEmail(user.email);
 
-    const token = signToken(user.id, user.email);
+    const sessao = await sessaoOuDesafio(user, { ip, userAgent });
+    if (sessao.mfaRequired) {
+      logger.info('Google validado; aguardando código MFA', { userId: user.id, ip });
+      return { ...sessao, novoUsuario };
+    }
 
-    logger.info('Usuário autenticado via Google', { userId: user.id, email: user.email, ip });
+    logger.info('Usuário autenticado via Google', { userId: user.id, ip });
 
     return {
-      token,
+      token: sessao.token,
       novoUsuario,
       usuario: {
         id: user.id,
@@ -286,6 +324,7 @@ class AutenticacaoService {
    */
   static async logout({ token, userId, ip }) {
     const decoded = jwt.decode(token) || {};
+    if (decoded.jti) await SessaoService.revogar({ usuarioId: userId, id: decoded.jti, ip }).catch(() => {});
     const expiraEm = decoded.exp
       ? new Date(decoded.exp * 1000).toISOString()
       : new Date(Date.now() + 24 * 3600 * 1000).toISOString();
@@ -293,6 +332,12 @@ class AutenticacaoService {
     await TokenRevogadoDAO.adicionar({ tokenHash: hashToken(token), expiraEm });
 
     logger.info('Sessão encerrada (logout)', { userId, ip });
+  }
+
+  /** "Sair de todos os dispositivos": revoga todas as sessões, inclusive a atual. */
+  static async logoutAll({ token, userId, ip }) {
+    await AutenticacaoService.logout({ token, userId, ip });
+    return SessaoService.revogarTodas({ usuarioId: userId, ip, motivo: 'sair de todos os dispositivos' });
   }
 
   /**
@@ -306,17 +351,18 @@ class AutenticacaoService {
 
     const user = await UsuarioDAO.findByEmail(email);
     if (!user) {
-      logger.warn(`Solicitação de recuperação de senha para e-mail não cadastrado: ${email}`);
+      logger.warn('Solicitação de recuperação de senha para e-mail não cadastrado', { email });
       return;
     }
 
-    const codigo = Math.floor(100000 + Math.random() * 900000).toString();
+    // CSPRNG: Math.random é previsível e não serve para códigos de segurança.
+    const codigo = crypto.randomInt(100000, 1000000).toString();
     const expiraEm = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     // Invalida códigos anteriores + insere o novo atomicamente
     await getDb().transaction(async (tx) => {
       await RecuperacaoSenhaDAO.invalidateActiveByUsuarioId(user.id, tx);
-      await RecuperacaoSenhaDAO.create({ usuarioId: user.id, codigo, expiraEm }, tx);
+      await RecuperacaoSenhaDAO.create({ usuarioId: user.id, codigo: hashCodigoRecuperacao(user.id, codigo), expiraEm }, tx);
     });
 
     // Envio de e-mail APÓS o commit (I/O externo nunca dentro da tx)
@@ -338,41 +384,71 @@ class AutenticacaoService {
 
     const user = await UsuarioDAO.findByEmail(email);
     if (!user) {
-      throw new BadRequestError('E-mail inválido ou código de verificação incorreto/expirado.');
+      throw new BadRequestError(MSG_RESET_INVALIDO);
     }
 
-    const record = await RecuperacaoSenhaDAO.findActiveByUsuarioAndCodigo(user.id, codigo);
-    if (!record) {
-      throw new BadRequestError('Código de verificação inválido ou já utilizado.');
+    // Anti força bruta do código de 6 dígitos: N erros bloqueiam novas tentativas
+    // para este e-mail (mesma tabela do RN19, com chave própria).
+    const chaveBloqueio = `reset:${String(email).toLowerCase()}`;
+    const registroBloqueio = await BloqueioLoginDAO.findByEmail(chaveBloqueio);
+    const bloqueio = new BloqueioLogin({
+      email: chaveBloqueio,
+      tentativas: registroBloqueio ? registroBloqueio.tentativas : 0,
+      bloqueadoAte: registroBloqueio ? registroBloqueio.bloqueado_ate : null,
+    });
+    if (bloqueio.bloqueado()) {
+      throw new TooManyRequestsError('Muitas tentativas. Solicite um novo código em alguns minutos.');
     }
+
+    const record = await RecuperacaoSenhaDAO.findActiveByUsuarioAndCodigo(user.id, hashCodigoRecuperacao(user.id, codigo));
+    if (!record) {
+      bloqueio.registrarFalha({ limite: 5, minutos: 15 });
+      await BloqueioLoginDAO.salvar({
+        email: chaveBloqueio,
+        tentativas: bloqueio.tentativas,
+        bloqueadoAte: bloqueio.bloqueadoAte,
+      });
+      throw new BadRequestError(MSG_RESET_INVALIDO);
+    }
+    await BloqueioLoginDAO.deleteByEmail(chaveBloqueio);
 
     const now = new Date().toISOString();
     if (record.expira_em < now) {
       throw new BadRequestError('O código de verificação expirou. Por favor, solicite um novo código.');
     }
 
+    await verificarSenhaNova(novaSenha, { email: user.email, nome: user.nome, sobrenome: user.sobrenome });
+
     // Hash fora da tx
-    const hash = await bcrypt.hash(novaSenha, 10);
+    const hash = await hashSenha(novaSenha);
 
     await getDb().transaction(async (tx) => {
       await UsuarioDAO.updatePassword(user.id, hash, tx);
       await RecuperacaoSenhaDAO.markAsUsed(record.id, tx);
     });
 
+    // Quem tinha a sessão (talvez quem roubou a conta) cai em todos os aparelhos.
+    await SessaoService.revogarTodas({ usuarioId: user.id, ip, motivo: 'senha redefinida' });
+
     logger.audit('Senha redefinida com sucesso via recuperação de senha', {
       userId: user.id,
       email: user.email,
       ip,
     });
+    NotificacaoService.alertaSeguranca(user.id, {
+      titulo: 'Sua senha foi redefinida',
+      mensagem: 'A senha da sua conta foi redefinida pelo "Esqueci minha senha" e todas as sessões foram encerradas. Se não foi você, redefina a senha de novo e fale com o suporte.',
+    });
   }
 }
 
 // RLS: fluxos de autenticação rodam como sistema (ver cabeçalho do arquivo).
-for (const metodo of ['register', 'login', 'loginWithGoogle', 'logout', 'forgotPassword', 'resetPassword']) {
+for (const metodo of ['register', 'login', 'loginWithGoogle', 'logout', 'logoutAll', 'forgotPassword', 'resetPassword']) {
   const original = AutenticacaoService[metodo];
   AutenticacaoService[metodo] = (...args) => runAsSystem(() => original.apply(AutenticacaoService, args));
 }
 
 AutenticacaoService.verificarTokenGoogle = verificarTokenGoogle;
+AutenticacaoService.hashCodigoRecuperacao = hashCodigoRecuperacao;
 
 module.exports = AutenticacaoService;

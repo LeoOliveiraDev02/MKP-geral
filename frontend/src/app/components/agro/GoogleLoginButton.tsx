@@ -91,7 +91,7 @@ export function GoogleLoginButton({ onCredential, text = 'continue_with' }: Goog
         container.innerHTML = '';
         window.google.accounts.id.renderButton(container, {
           type: 'standard',
-          theme: 'filled_black',
+          theme: 'outline',
           size: 'large',
           shape: 'pill',
           text,
@@ -108,7 +108,7 @@ export function GoogleLoginButton({ onCredential, text = 'continue_with' }: Goog
 
   if (failed) {
     return (
-      <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}>
+      <p style={{ textAlign: 'center', color: '#727272', fontSize: '12px' }}>
         Login com Google indisponível no momento.
       </p>
     );

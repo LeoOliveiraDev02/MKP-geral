@@ -118,6 +118,69 @@ class AnuncioController {
       next(error);
     }
   }
+
+  /** GET /ads/suggest?q= — sugestões da busca. */
+  static async suggest(req, res, next) {
+    try {
+      const data = await AnuncioService.suggest({ q: req.query.q });
+      return res.status(200).json({ status: 'success', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** POST /ads/:id/events — visualização ou clique no WhatsApp. */
+  static async registrarEvento(req, res, next) {
+    try {
+      await AnuncioService.registrarEvento({
+        id: req.params.id,
+        tipo: req.body.tipo,
+        sessao: req.body.sessao,
+        usuarioId: req.user ? req.user.id : null,
+      });
+      return res.status(201).json({ status: 'success' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** GET /ads/:id/recommendations — "quem viu também viu". */
+  static async recomendacoes(req, res, next) {
+    try {
+      const data = await AnuncioService.recomendacoes({ id: req.params.id });
+      return res.status(200).json({ status: 'success', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** GET /ads/me/stats — visitas e cliques do vendedor. */
+  static async estatisticas(req, res, next) {
+    try {
+      const data = await AnuncioService.estatisticas({ anuncianteId: req.user.id, dias: req.query.dias });
+      return res.status(200).json({ status: 'success', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** PATCH /ads/:id/status — pausar/reativar. */
+  static async alterarStatus(req, res, next) {
+    try {
+      const data = await AnuncioService.alterarStatus({
+        anunciantePublic: req.user,
+        id: req.params.id,
+        status: req.body.status,
+      });
+      return res.status(200).json({
+        status: 'success',
+        message: data.status === 'PAUSADO' ? 'Anúncio pausado.' : 'Anúncio reativado.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = AnuncioController;

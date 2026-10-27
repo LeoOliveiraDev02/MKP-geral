@@ -34,6 +34,7 @@ function loggerMiddleware(req, res, next) {
 
     // Registra uma linha de log informativa estruturada com dados cruciais da requisição e da resposta.
     logger.info(`HTTP Request: ${req.method} ${req.originalUrl}`, {
+      requestId: req.id,
       method: req.method,
       url: req.originalUrl,
       status: res.statusCode, // Código de status HTTP final da resposta (ex: 200, 201, 400, 500)
@@ -42,6 +43,19 @@ function loggerMiddleware(req, res, next) {
       userAgent: req.headers['user-agent'], // Informações do navegador/cliente que fez a requisição
       userId: req.user ? req.user.id : null // ID do usuário autenticado (se o authMiddleware tiver rodado antes)
     });
+
+    // Falhas de autenticação/autorização ficam também na trilha de auditoria
+    // (base para alertas de força bruta e varredura de IDs).
+    if (res.statusCode === 401 || res.statusCode === 403) {
+      logger.audit('Acesso negado', {
+        requestId: req.id,
+        status: res.statusCode,
+        method: req.method,
+        url: req.originalUrl,
+        ip: req.ip,
+        userId: req.user ? req.user.id : null,
+      });
+    }
   });
 
   // Invoca a função next() para que a requisição continue seu fluxo pelas rotas normais

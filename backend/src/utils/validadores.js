@@ -76,8 +76,62 @@ function validatePhone(phone) {
   return digits.length >= 10 && digits.length <= 15;
 }
 
+/**
+ * Valida CPF pelos dígitos verificadores (não consulta a Receita).
+ * @param {string} cpf - com ou sem máscara
+ */
+function validateCpf(cpf) {
+  const d = String(cpf || '').replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const dv = (len) => {
+    let soma = 0;
+    for (let i = 0; i < len; i++) soma += Number(d[i]) * (len + 1 - i);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
+}
+
+/**
+ * Valida CNPJ pelos dígitos verificadores.
+ * @param {string} cnpj - com ou sem máscara
+ */
+function validateCnpj(cnpj) {
+  const d = String(cnpj || '').replace(/\D/g, '');
+  if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
+  const dv = (len) => {
+    const pesos = len === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const soma = pesos.reduce((acc, p, i) => acc + Number(d[i]) * p, 0);
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  return dv(12) === Number(d[12]) && dv(13) === Number(d[13]);
+}
+
+/**
+ * Formato do número do CAR (Cadastro Ambiental Rural): UF-IBGE(7)-32 hex,
+ * ex.: MG-3152501-0F8E1C2B4A5D6E7F8091A2B3C4D5E6F7. Só confere o formato.
+ */
+function validateCar(car) {
+  return /^[A-Z]{2}-\d{7}-[0-9A-F]{32}$/i.test(String(car || '').replace(/\./g, '').trim());
+}
+
+/** Link de vídeo aceito no perfil do produtor (YouTube ou Vimeo, https). */
+function validateVideoUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && /(^|\.)(youtube\.com|youtu\.be|vimeo\.com)$/.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   validatePassword,
   validateEmail,
-  validatePhone
+  validatePhone,
+  validateCpf,
+  validateCnpj,
+  validateCar,
+  validateVideoUrl,
 };

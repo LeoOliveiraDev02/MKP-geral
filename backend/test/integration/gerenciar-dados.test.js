@@ -43,8 +43,9 @@ describe('UC8 — Gerenciar Dados Pessoais', async () => {
     const { status, body } = await api(base, 'GET', '/api/users/profile', { token });
     assert.equal(status, 200);
     assert.deepEqual(Object.keys(body.data.usuario).sort(), [
-      'data_cadastro', 'email', 'id', 'nome', 'sobrenome', 'telefone',
+      'data_cadastro', 'email', 'id', 'is_admin', 'nome', 'sobrenome', 'telefone',
     ]);
+    assert.equal(body.data.usuario.is_admin, false);
     assert.ok(!('senha_hash' in body.data.usuario), 'hash nunca vaza no perfil');
   });
 

@@ -37,11 +37,14 @@ export default defineConfig({
   // Encaminha a API e as imagens enviadas para o agrostand-backend em dev.
   // changeOrigin faz o backend montar as URLs de upload com o host dele (localhost:3000).
   server: {
+    // Libera os endereços temporários do túnel HTTPS (teste no celular com cloudflared).
+    allowedHosts: ['.trycloudflare.com'],
     // Permite que o popup do "Entrar com Google" devolva a credencial via postMessage.
     headers: { 'Cross-Origin-Opener-Policy': 'same-origin-allow-popups' },
     proxy: {
       '/api': { target: process.env.VITE_BACKEND_URL || 'http://localhost:3000', changeOrigin: true },
       '/uploads': { target: process.env.VITE_BACKEND_URL || 'http://localhost:3000', changeOrigin: true },
+      '/share': { target: process.env.VITE_BACKEND_URL || 'http://localhost:3000', changeOrigin: true },
     },
   },
 })

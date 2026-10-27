@@ -18,6 +18,16 @@ const logger = require('../utils/logger');
  * @param {Function} next - Função callback do Express (obrigatório na assinatura, mesmo se não invocado).
  */
 function errorMiddleware(err, req, res, next) {
+  // Erros do Multer (arquivo grande demais, campo inesperado...) são do cliente.
+  if (err && err.name === 'MulterError') {
+    const mensagens = {
+      LIMIT_FILE_SIZE: 'A imagem excede o tamanho limite de 10 MB.',
+      LIMIT_FILE_COUNT: 'Arquivos demais no envio.',
+      LIMIT_UNEXPECTED_FILE: 'Campo de arquivo inesperado ou arquivos demais.',
+    };
+    return res.status(400).json({ status: 'error', message: mensagens[err.code] || 'Upload inválido.' });
+  }
+
   // Erro de negócio esperado (Service): envelope legado, sem stack, log como WARN.
   if (err && err.expose && err.status && err.status < 500) {
     logger.warn(`Business error ${err.status} during ${req.method} ${req.originalUrl}`, {
@@ -35,12 +45,16 @@ function errorMiddleware(err, req, res, next) {
   // Define o status HTTP padrão como 500 (Erro Interno do Servidor) caso nenhum status específico tenha sido fornecido.
   const status = err.status || 500;
   
-  // Define a mensagem de erro padrão caso nenhuma mensagem descritiva tenha sido anexada ao erro.
-  const message = err.message || 'Ocorreu um erro interno no servidor.';
+  // Em produção, erros internos (5xx) nunca expõem a mensagem original
+  // (pode conter SQL, caminhos de arquivo, nomes de tabela...).
+  const message = status >= 500 && process.env.NODE_ENV === 'production'
+    ? 'Ocorreu um erro interno no servidor.'
+    : err.message || 'Ocorreu um erro interno no servidor.';
 
   // Registra o erro utilizando o logger estruturado.
   // Grava informações contextuais essenciais, como método HTTP, URL acessada, endereço de IP e ID do usuário autenticado.
   logger.error(`Error during request to ${req.method} ${req.originalUrl}`, err, {
+    requestId: req.id,
     status,
     ip: req.ip,
     userId: req.user ? req.user.id : null
@@ -51,6 +65,8 @@ function errorMiddleware(err, req, res, next) {
     status: 'error',
     statusCode: status,
     message: message,
+    // Id para o suporte achar o erro nos logs sem expor detalhes ao usuário.
+    requestId: req.id,
     // Em ambiente de desenvolvimento, inclui o stack trace completo (pilha de chamadas) para facilitar o debug.
     // Em produção, o stack trace é omitido (retorna undefined) por questões de segurança e privacidade do código.
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined

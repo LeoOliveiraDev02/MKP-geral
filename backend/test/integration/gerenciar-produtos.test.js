@@ -157,7 +157,7 @@ describe('UC7 — Gerenciar Produtos', async () => {
       headers: { Authorization: `Bearer ${tokenA}` },
       body: fd,
     });
-    assert.equal(res.status, 500);
+    assert.equal(res.status, 400);
 
     const depois = (await api(base, 'GET', `/api/ads/${ad1.id}`)).body.data.anuncio;
     assert.equal(depois.nome, antes.nome);

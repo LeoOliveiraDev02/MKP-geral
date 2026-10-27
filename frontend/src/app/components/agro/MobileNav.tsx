@@ -1,6 +1,7 @@
 import { Home, ShoppingCart, Heart, User } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { View } from '../../App';
+import { C } from './theme';
 
 type MobileNavProps = {
   currentView: View;
@@ -23,9 +24,8 @@ export function MobileNav({ currentView, onNavigate, cartCount, favCount, isLogg
       className="md:hidden"
       style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'rgba(4, 18, 8, 0.97)',
-        backdropFilter: 'blur(30px)',
-        borderTop: '1px solid rgba(74, 250, 130, 0.15)',
+        background: C.graphite,
+        borderTop: '1px solid rgba(255,255,255,0.08)',
         zIndex: 100,
         paddingBottom: 'env(safe-area-inset-bottom, 0)',
       }}
@@ -54,9 +54,8 @@ export function MobileNav({ currentView, onNavigate, cartCount, favCount, isLogg
                   style={{
                   position: 'absolute', top: 0, left: 'calc(50% - 15px)',
                   width: '30px', height: '2px',
-                  background: 'linear-gradient(90deg, #16a34a, #4afa82)',
+                  background: C.orange,
                   borderRadius: '0 0 4px 4px',
-                  boxShadow: '0 0 8px #4afa82',
                 }} />
               )}
 
@@ -67,7 +66,7 @@ export function MobileNav({ currentView, onNavigate, cartCount, favCount, isLogg
               >
                 <Icon
                   size={22}
-                  color={isActive ? '#4afa82' : 'rgba(255,255,255,0.45)'}
+                  color={isActive ? C.orange : 'rgba(255,255,255,0.6)'}
                   strokeWidth={isActive ? 2.5 : 1.5}
                 />
                 <AnimatePresence>
@@ -80,7 +79,7 @@ export function MobileNav({ currentView, onNavigate, cartCount, favCount, isLogg
                     transition={{ type: 'spring', stiffness: 600, damping: 15 }}
                     style={{
                     position: 'absolute', top: '-6px', right: '-8px',
-                    background: '#4afa82', color: '#000',
+                    background: C.orange, color: '#fff',
                     fontSize: '9px', fontWeight: 800,
                     borderRadius: '50%', width: '16px', height: '16px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -94,7 +93,7 @@ export function MobileNav({ currentView, onNavigate, cartCount, favCount, isLogg
 
               <span style={{
                 fontSize: '10px',
-                color: isActive ? '#4afa82' : 'rgba(255,255,255,0.4)',
+                color: isActive ? C.orange : 'rgba(255,255,255,0.6)',
                 fontWeight: isActive ? 600 : 400,
                 fontFamily: "'Inter', sans-serif",
               }}>

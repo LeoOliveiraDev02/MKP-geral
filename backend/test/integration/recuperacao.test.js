@@ -87,7 +87,12 @@ describe('UC3 — Recuperação de senha', async () => {
   it('rejeita código expirado', async () => {
     const RecuperacaoSenhaDAO = require('../../src/dao/RecuperacaoSenhaDAO');
     const passado = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    await asSystem(() => RecuperacaoSenhaDAO.create({ usuarioId, codigo: '123456', expiraEm: passado }));
+    await asSystem(() => RecuperacaoSenhaDAO.create({
+      usuarioId,
+      // o banco guarda só o HMAC do código
+      codigo: require('../../src/services/AutenticacaoService').hashCodigoRecuperacao(usuarioId, '123456'),
+      expiraEm: passado,
+    }));
 
     const { status, body } = await api(base, 'POST', '/api/auth/reset-password', {
       body: { email: EMAIL, codigo: '123456', novaSenha: 'Outra@123' },

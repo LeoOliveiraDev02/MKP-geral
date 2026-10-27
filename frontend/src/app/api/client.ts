@@ -4,7 +4,9 @@
  * - toda resposta vem no envelope `{ status: 'success' | 'error', message?, data? }`;
  * - erros de negócio (AppError no backend) chegam como `{ status: 'error', message }`
  *   com o HTTP code correspondente e viram `ApiError` aqui;
- * - rotas protegidas exigem `Authorization: Bearer <jwt>` (authMiddleware).
+ * - sessão: no navegador o JWT fica num cookie HttpOnly (JavaScript não lê →
+ *   XSS não rouba a sessão) e escritas levam o cabeçalho X-CSRF-Token; no app
+ *   nativo (Capacitor) o JWT vai em `Authorization: Bearer <jwt>`.
  */
 
 // Em dev o Vite faz proxy de /api e /uploads para o backend (vite.config.ts).
@@ -12,6 +14,24 @@
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
 
 const TOKEN_KEY = 'agrostand.token';
+// Web: guarda só o token CSRF (não é credencial; sem o cookie HttpOnly não vale nada).
+const CSRF_KEY = 'agrostand.csrf';
+
+/** App Android/iOS (Capacitor): cookies entre origens não são confiáveis lá → Bearer. */
+function isNative(): boolean {
+  const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return !!cap?.isNativePlatform?.();
+}
+
+// Migração: versões antigas guardavam o JWT no localStorage do navegador.
+if (!isNative()) {
+  try { localStorage.removeItem(TOKEN_KEY); } catch { /* storage indisponível */ }
+}
+
+function lerCookie(nome: string): string | null {
+  const par = document.cookie.split('; ').find(c => c.startsWith(`${nome}=`));
+  return par ? decodeURIComponent(par.slice(nome.length + 1)) : null;
+}
 
 export type ApiEnvelope<T> = {
   status: 'success' | 'error';
@@ -31,14 +51,32 @@ export class ApiError extends Error {
 }
 
 export const tokenStorage = {
+  /** Há sessão? (app: o JWT; web: o marcador CSRF — o JWT está no cookie HttpOnly). */
   get(): string | null {
-    try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+    try { return localStorage.getItem(isNative() ? TOKEN_KEY : CSRF_KEY); } catch { return null; }
   },
-  set(token: string) {
-    try { localStorage.setItem(TOKEN_KEY, token); } catch { /* storage indisponível */ }
+  /** Chamado após login/cadastro com o envelope da sessão. */
+  set(token: string, csrfToken?: string) {
+    try {
+      if (isNative()) localStorage.setItem(TOKEN_KEY, token);
+      else localStorage.setItem(CSRF_KEY, csrfToken || lerCookie('agrostand_csrf') || '1');
+    } catch { /* storage indisponível */ }
   },
   clear() {
-    try { localStorage.removeItem(TOKEN_KEY); } catch { /* storage indisponível */ }
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(CSRF_KEY);
+    } catch { /* storage indisponível */ }
+  },
+  /** JWT para o cabeçalho Authorization (só no app nativo). */
+  bearer(): string | null {
+    if (!isNative()) return null;
+    try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+  },
+  /** Token CSRF para escritas autenticadas por cookie. */
+  csrf(): string | null {
+    if (isNative()) return null;
+    try { return lerCookie('agrostand_csrf') || localStorage.getItem(CSRF_KEY); } catch { return null; }
   },
 };
 
@@ -51,11 +89,12 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
 type Query = Record<string, string | number | null | undefined>;
 
 type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   query?: Query;
   /** Objeto (enviado como JSON) ou FormData (multipart, para uploads via Multer). */
   body?: unknown;
-  auth?: boolean;
+  /** true = exige login; 'optional' = envia o token se houver (rotas públicas que personalizam). */
+  auth?: boolean | 'optional';
 };
 
 function buildUrl(path: string, query?: Query): string {
@@ -87,15 +126,20 @@ export async function request<T = undefined>(
     payload = JSON.stringify(body);
   }
 
-  const token = tokenStorage.get();
+  if (auth === true && !tokenStorage.get()) {
+    throw new ApiError(401, 'Acesso negado. Token não fornecido.');
+  }
   if (auth) {
-    if (!token) throw new ApiError(401, 'Acesso negado. Token não fornecido.');
-    headers.Authorization = `Bearer ${token}`;
+    const bearer = tokenStorage.bearer();
+    if (bearer) headers.Authorization = `Bearer ${bearer}`;
+    const csrf = tokenStorage.csrf();
+    if (csrf && method !== 'GET') headers['X-CSRF-Token'] = csrf;
   }
 
   let response: Response;
   try {
-    response = await fetch(buildUrl(path, query), { method, headers, body: payload });
+    // credentials: envia o cookie HttpOnly de sessão também para a API em outro subdomínio.
+    response = await fetch(buildUrl(path, query), { method, headers, body: payload, credentials: 'include' });
   } catch {
     throw new ApiError(0, 'Não foi possível conectar ao servidor. Verifique sua conexão.');
   }
@@ -108,7 +152,7 @@ export async function request<T = undefined>(
   }
 
   if (!response.ok || !envelope || envelope.status !== 'success') {
-    if (response.status === 401 && auth) {
+    if (response.status === 401 && auth === true) {
       tokenStorage.clear();
       onUnauthorized?.();
     }

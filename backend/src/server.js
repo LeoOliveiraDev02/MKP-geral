@@ -9,6 +9,10 @@
 // Carrega as variáveis de ambiente definidas no arquivo '.env' para dentro do 'process.env'
 require('dotenv').config();
 
+// Em produção, recusa subir com configuração insegura (JWT_SECRET fraco, CORS
+// aberto, pagamento simulado...). Melhor não subir do que subir vulnerável.
+require('./config/seguranca').validarAmbiente();
+
 // Importa o aplicativo Express pré-configurado no arquivo app.js
 const app = require('./app');
 

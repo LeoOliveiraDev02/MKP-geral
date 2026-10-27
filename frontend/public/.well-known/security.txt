@@ -1,0 +1,7 @@
+# Como relatar uma vulnerabilidade no AgroMundo (RFC 9116).
+# Atualize o Contact com o e-mail real da equipe e renove o Expires antes de vencer.
+Contact: mailto:seguranca@agromundo.com.br
+Expires: 2027-04-18T00:00:00.000Z
+Preferred-Languages: pt-BR, en
+Policy: https://agromundo.com.br/privacidade
+Canonical: https://agromundo.com.br/.well-known/security.txt

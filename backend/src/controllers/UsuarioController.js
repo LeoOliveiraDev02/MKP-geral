@@ -4,6 +4,7 @@
  * exclusão definitiva (LGPD) em cascata no DAO.
  */
 
+const adminMiddleware = require('../middlewares/adminMiddleware');
 const UsuarioService = require('../services/UsuarioService');
 
 class UsuarioController {
@@ -16,7 +17,7 @@ class UsuarioController {
       return res.status(200).json({
         status: 'success',
         data: {
-          usuario: req.user
+          usuario: { ...req.user, is_admin: adminMiddleware.isAdmin(req.user) }
         }
       });
     } catch (error) {
@@ -28,9 +29,10 @@ class UsuarioController {
   static async updateProfile(req, res, next) {
     try {
       const usuario = await UsuarioService.updateProfile({
+        // Corpo primeiro: campos do servidor (userId, ip) nunca são sobrescritos.
+        ...req.body,
         userId: req.user.id,
         userPublic: req.user,
-        ...req.body,
         ip: req.ip,
       });
       return res.status(200).json({
@@ -46,7 +48,7 @@ class UsuarioController {
   /** @route PUT /users/password */
   static async updatePassword(req, res, next) {
     try {
-      await UsuarioService.updatePassword({ userId: req.user.id, ...req.body, ip: req.ip });
+      await UsuarioService.updatePassword({ ...req.body, userId: req.user.id, sessaoAtual: req.auth.jti, ip: req.ip });
       return res.status(200).json({
         status: 'success',
         message: 'Senha atualizada com sucesso.'
@@ -67,6 +69,21 @@ class UsuarioController {
         status: 'success',
         message: 'Sua conta e todos os dados associados foram excluídos com sucesso, em conformidade com a LGPD.'
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * @route GET /users/data-export
+   * LGPD art. 18: cópia dos dados pessoais em JSON (download).
+   */
+  static async exportarDados(req, res, next) {
+    try {
+      const dados = await UsuarioService.exportarDados({ userId: req.user.id, ip: req.ip });
+      res.setHeader('Content-Disposition', `attachment; filename="meus-dados-agromundo-${req.user.id}.json"`);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ status: 'success', data: dados });
     } catch (error) {
       next(error);
     }

@@ -9,9 +9,14 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:seed": "node src/db/seed.js",
+    "db:geocode": "node src/db/geocode.js",
     "test": "node --test \"test/unit/*.test.js\" \"test/integration/*.test.js\"",
     "test:unit": "node --test \"test/unit/*.test.js\"",
-    "test:integration": "node --test \"test/integration/*.test.js\""
+    "test:integration": "node --test \"test/integration/*.test.js\"",
+    "db:backup": "node scripts/backup.js",
+    "db:backup:test": "node scripts/testar-backup.js",
+    "audit": "npm audit --omit=dev --audit-level=moderate"
   },
   "keywords": [],
   "author": "",
@@ -19,15 +24,20 @@
   "type": "commonjs",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
     "google-auth-library": "^11.1.0",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
-    "nodemailer": "^9.0.3",
-    "pg": "^8.23.1"
+    "nodemailer": "^10.1.6",
+    "pg": "^8.23.1",
+    "sharp": "0.35.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10"

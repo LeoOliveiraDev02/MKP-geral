@@ -23,20 +23,30 @@ O projeto utiliza um conjunto de tecnologias modernas e robustas para garantir p
 
 ## 📁 Estrutura do Projeto (Arquitetura)
 
-A base de código está organizada em português para facilitar o entendimento de desenvolvedores juniores, seguindo a divisão de responsabilidades:
+A base de código está organizada em português para facilitar o entendimento de desenvolvedores juniores e segue a arquitetura **MVC (Model, View, Controller)**, com uma camada de Service entre o Controller e o Model:
+
+| MVC | Onde fica | Responsabilidade |
+|-----|-----------|------------------|
+| **Model** | `src/domain/` (entidades e regras) + `src/dao/` (persistência) + `src/db/` (schema) | Dados e regras de negócio do domínio |
+| **View** | front-end React (`../Agromundo`) — a API responde JSON no envelope `{ status, message, data }` | Apresentação |
+| **Controller** | `src/routes/` (mapa URL → ação) + `src/controllers/` (adaptador HTTP fino) | Recebe a requisição e devolve a resposta |
+| Service | `src/services/` | Orquestra Model + transações (casos de uso), sem HTTP |
+
+Fluxo de uma requisição: `rota → middlewares (auth, rate limit, validação) → Controller → Service → Domain/DAO → banco`.
 
 ```bash
 src/
-├── config/             # Compat de banco (shim p/ `src/db`) e Multer (multer.js)
+├── config/             # Multer (upload seguro) e seguranca.js (CORS, cookies, proxy, checagem do ambiente de produção)
 ├── controllers/        # Thin adapters HTTP (extraem entrada, chamam services, montam o envelope; sem regra de negócio)
 ├── dao/                # DAOs via Drizzle query builder (sem SQL cru; aceitam `tx` p/ transações)
 ├── db/                 # Drizzle ORM: schema.js (tabelas), schema.sql (DDL + policies RLS), context.js (contexto RLS), index.js (pool pg, boot e seed)
 ├── domain/             # Model: entidades de domínio (Usuario, Cliente, Anunciante, Anuncio, Produto, ...) usadas pelos services p/ regras e transições de estado; factories.js monta entidades a partir das linhas do banco
 ├── errors/             # Exceções de negócio (AppError 400/401/403/404) lançadas pelos services e traduzidas pelo errorMiddleware
-├── middlewares/        # Middlewares do Express (Validação de JWT, Logs e Captura Global de Erros)
+├── middlewares/        # Middlewares do Express (JWT/cookie + CSRF, admin + MFA, rate limit, validação, CRON, logs, erros)
 ├── routes/             # Definição e agrupamento de endpoints RESTful
 ├── services/           # Services: orquestram domínio + DAOs + transações (lógica de negócio; sem HTTP)
-├── utils/              # Funções utilitárias (validadores regex, formatador do WhatsApp e envio de e-mails)
+├── utils/              # Utilitários (validadores, WhatsApp, e-mail, sessão/JWT, TOTP, hash de senha, logger com redação)
+├── validacao/          # Schemas zod de entrada das rotas JSON (tipo, tamanho, formato)
 ├── app.js              # Inicialização e configuração de middlewares globais do Express
 └── server.js           # Ponto de entrada (Entrypoint), escuta de portas e encerramento gracioso
 ```
@@ -104,15 +114,22 @@ O servidor será iniciado na porta especificada (padrão `3000`). Você verá a 
 ```bash
 npm run db:generate  # gera SQL em ./drizzle a partir de src/db/schema.js
 npm run db:studio    # abre o Drizzle Studio
+npm run db:seed      # anúncios de demonstração por categoria (vendedor produtor.demo@agrostand.com / Demo@1234)
 ```
 > O boot (`initializeDatabase`) cria o banco e o role da API se faltarem, aplica `src/db/schema.sql`
 > (tabelas `IF NOT EXISTS`, índices e policies RLS), concede permissões e popula as categorias padrão.
 > Idempotente: preserva os dados existentes. (`db:push` não conhece as policies — prefira o boot.)
 
-### 5. Camadas (estilo Java/Spring)
+### 5. Camadas (MVC + Service, estilo Java/Spring)
 ```text
-HTTP → Controller (thin) → Service (regras + transação) → Domain (entidades) + DAO (Drizzle)
+View (React) → HTTP → Route → Controller (thin) → Service (regras + transação) → Model: Domain (entidades) + DAO (Drizzle)
 ```
+Regras para manter a organização:
+- **Controller** não tem regra de negócio nem acessa banco: lê `req`, chama um Service, monta o envelope.
+- **Service** não conhece `req`/`res`: recebe dados simples e lança `AppError`.
+- **DAO** é o único lugar com consultas (Drizzle); recebe `tx` opcional para transações.
+- **Domain** guarda invariantes e transições de estado (ex: `Pedido.transicionar`).
+- Segurança fica em `middlewares/`, `config/seguranca.js` e `validacao/` (ver `SECURITY.md`).
 Erros de negócio (`src/errors/AppError`) são lançados pelos services e traduzidos
 pelo `errorMiddleware` para o envelope `{status:'error', message}` com o HTTP code.
 
@@ -181,6 +198,20 @@ não toca no banco nem em `public/uploads` de dev. `rls.test.js` prova o isolame
 * `POST /api/favorites/toggle` - Liga/desliga o favorito de um anúncio (requer JWT; só ATIVOS)
 * `GET /api/favorites` - Meus Favoritos, recentes primeiro, indisponíveis sinalizados (requer JWT)
 * `DELETE /api/favorites/:id` - Remove um favorito da lista (requer JWT, só os próprios)
+
+### Marketplace (ambiente de teste)
+Pagamento é **simulado** (nenhuma cobrança real) e o frete é uma **estimativa por tabela** (mesma cidade / mesmo estado / outro estado + peso; grátis acima de R$ 500).
+
+* **Vitrine**: `GET /api/ads` aceita `precoMin`, `precoMax`, `uf`, `cidade`, `zona`, `ofertas=true`, `anuncianteId`, `lat`/`lng`/`raioKm`, `excluir` e `sort` (`recentes`, `menor_preco`, `maior_preco`, `mais_avaliados`, `proximos`). `GET /api/ads/suggest?q=` (sugestões), `GET /api/ads/:id/recommendations`, `POST /api/ads/:id/events` (visita/clique no WhatsApp), `GET /api/ads/me/stats`, `PATCH /api/ads/:id/status` (pausar/reativar). O anúncio ganhou unidade, estoque, peso, preço promocional, atacado, certificações e entrega/retirada.
+* **Pedidos**: `POST /api/orders/quote`, `POST /api/orders/checkout` (um pedido por produtor), `GET /api/orders`, `GET /api/orders/sales`, `GET /api/orders/:id`, `PATCH /api/orders/:id/status` (pagar simulado, preparar, enviar com rastreio, retirada, entregue, cancelar).
+* **Notificações**: `GET /api/notifications`, `POST /api/notifications/:id/read`, `POST /api/notifications/read-all` (também por e-mail com `NOTIFY_EMAIL=on`).
+* **Reputação**: `/api/reviews` (avaliação com até 3 fotos, só após entrega), `/api/questions` (perguntas e respostas), `GET /api/producers/:id` (página pública + termômetro), `/api/users/profile/public` e `/api/users/profile/photo`, `/api/verification` (CPF/CNPJ/CAR).
+* **Comunicação e pós-venda**: `/api/chats` (chat interno), `/api/claims` (reclamação, devolução e pedido de mediação).
+* **Comércio**: `/api/quotes` (cotação de atacado), `/api/baskets` e `/api/subscriptions` (cestas por assinatura).
+* **Administração** (e-mails em `ADMIN_EMAILS`): `/api/admin/verifications` e `/api/admin/claims`.
+* **Compartilhamento**: `GET /share/produto/:id` e `/share/produtor/:id` (prévia Open Graph para o WhatsApp; só funciona com URL pública).
+
+Variáveis novas no `.env`: `GEOCODER=nominatim` (coordenadas via OpenStreetMap), `ADMIN_EMAILS`, `FRONTEND_URL`, `NOTIFY_EMAIL`. Scripts: `npm run db:seed` (também cria `cliente.demo@agrostand.com / Cliente@1234` e `admin.demo@agrostand.com / Admin@1234`) e `npm run db:geocode`.
 
 ---
 

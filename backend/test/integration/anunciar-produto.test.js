@@ -142,19 +142,19 @@ describe('UC2 — Anunciar Produto', async () => {
   });
 
   it('alternativo 3 (imagem inválida): formato e tamanho rejeitados', async () => {
-    // formato: o Multer barra na fileFilter; documenta o comportamento atual (500 + mensagem específica)
+    // formato: o Multer barra na fileFilter → erro do cliente (400 + mensagem específica)
     const fdFormato = baseForm({ categoriaId, enderecoId, nome: 'Formato Ruim' });
     fdFormato.append('imagemPrincipal', new Blob(['não é imagem'], { type: 'text/plain' }), 'nota.txt');
     const r1 = await postAd(base, token, fdFormato);
-    assert.equal(r1.status, 500);
+    assert.equal(r1.status, 400);
     assert.match(r1.body.message, /Formato de imagem inválido/);
 
     // tamanho: acima de 10MB (RNF03)
     const fdTamanho = baseForm({ categoriaId, enderecoId, nome: 'Grande Demais' });
     fdTamanho.append('imagemPrincipal', new Blob([Buffer.alloc(10 * 1024 * 1024 + 1)], { type: 'image/png' }), 'grande.png');
     const r2 = await postAd(base, token, fdTamanho);
-    assert.equal(r2.status, 500);
-    assert.match(r2.body.message, /File too large/i);
+    assert.equal(r2.status, 400);
+    assert.match(r2.body.message, /tamanho limite de 10 MB/i);
   });
 
   it('garantia de sucesso: detalhe expõe produto, vendedor e imagens', async () => {

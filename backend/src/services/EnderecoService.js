@@ -5,6 +5,7 @@
  */
 
 const EnderecoDAO = require('../dao/EnderecoDAO');
+const GeocodificacaoService = require('./GeocodificacaoService');
 const { runAsSystem } = require('../db/context');
 const { Endereco } = require('../domain/factories');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../errors/AppError');
@@ -38,6 +39,7 @@ class EnderecoService {
       uf: enderecoEnt.uf,
       zona: enderecoEnt.zona,
     });
+    GeocodificacaoService.agendarPendentes(userId);
 
     return {
       endereco: {
@@ -84,6 +86,8 @@ class EnderecoService {
       uf: enderecoEnt.uf,
       zona: enderecoEnt.zona,
     });
+    // Endereço mudou: coordenadas antigas não valem mais
+    GeocodificacaoService.agendar(Number(id), enderecoEnt);
 
     return {
       endereco: {

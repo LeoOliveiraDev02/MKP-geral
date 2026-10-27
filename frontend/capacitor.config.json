@@ -1,0 +1,9 @@
+{
+  "appId": "br.com.agromundo.app",
+  "appName": "AgroMundo",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

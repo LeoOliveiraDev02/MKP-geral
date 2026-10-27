@@ -1,8 +1,14 @@
-import { useState } from 'react';
-import { ShoppingCart, Trash2, ArrowLeft, Tag, Truck, Shield, ChevronRight, Check, PartyPopper } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ShoppingCart, Trash2, ArrowRight, Store, Truck, AlertTriangle, Minus, Plus } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CartItem, formatCurrency } from './data';
+import { CartItem, formatCurrency, UNIDADES } from './data';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { C, FONT } from './theme';
+import { Card, EmptyState, PageShell, botaoPrimario, botaoSecundario, desabilitado, imagemCover } from './ui';
+import { useApp } from '../../AppContext';
+import { PedidoService } from '../../api/services';
+import { getErrorMessage } from '../../api/client';
+import type { GrupoCarrinho } from '../../api/types';
 
 type CartPageProps = {
   items: CartItem[];
@@ -11,386 +17,195 @@ type CartPageProps = {
   onBack: () => void;
 };
 
+/**
+ * Carrinho salvo no navegador. Preços (oferta e atacado) e estoque são
+ * conferidos no servidor a cada mudança; o frete é escolhido no checkout.
+ */
 export function CartPage({ items, onUpdateQuantity, onRemove, onBack }: CartPageProps) {
-  const [coupon, setCoupon] = useState('');
-  const [couponApplied, setCouponApplied] = useState(false);
-  const [checkoutDone, setCheckoutDone] = useState(false);
+  const app = useApp();
+  const [grupos, setGrupos] = useState<GrupoCarrinho[] | null>(null);
+  const [freteGratisAcima, setFreteGratisAcima] = useState(500);
+  const [erro, setErro] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(false);
 
-  const subtotal = items.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
-  const discount = couponApplied ? subtotal * 0.1 : 0;
-  const shipping = subtotal > 500 ? 0 : 49.90;
-  const total = subtotal - discount + shipping;
+  const chave = items.map(i => `${i.product.id}:${i.quantity}`).join(',');
 
-  const handleCoupon = () => {
-    if (coupon.toUpperCase() === 'AGRO10') {
-      setCouponApplied(true);
+  useEffect(() => {
+    if (items.length === 0) {
+      setGrupos([]);
+      return;
     }
-  };
+    let cancelado = false;
+    setCarregando(true);
+    const t = setTimeout(() => {
+      PedidoService.cotar(items.map(i => ({ anuncioId: Number(i.product.id), quantidade: i.quantity })))
+        .then(r => {
+          if (cancelado) return;
+          setGrupos(r.grupos);
+          setFreteGratisAcima(r.frete_gratis_acima);
+          setErro(null);
+        })
+        .catch(err => { if (!cancelado) { setErro(getErrorMessage(err)); setGrupos(null); } })
+        .finally(() => { if (!cancelado) setCarregando(false); });
+    }, 250);
+    return () => { cancelado = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave]);
 
-  if (checkoutDone) {
+  if (items.length === 0) {
     return (
-      <div style={{
-        background: '#040e07', minHeight: '100vh',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: "'Inter', sans-serif",
-      }}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          style={{ textAlign: 'center', padding: '40px' }}
-        >
-          <motion.div
-            initial={{ scale: 0, rotate: -45 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: 'spring', stiffness: 260, damping: 14, delay: 0.1 }}
-            style={{
-            width: '100px', height: '100px',
-            background: 'linear-gradient(135deg, #16a34a, #4afa82)',
-            borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 24px',
-            boxShadow: '0 0 50px rgba(74, 250, 130, 0.4)',
-          }}>
-            <Check size={52} color="#000" strokeWidth={3} />
-          </motion.div>
-          <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '32px', fontWeight: 800, color: '#fff', marginBottom: '12px' }}>
-            Pedido Realizado!
-          </h2>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '16px', marginBottom: '32px', maxWidth: '400px', margin: '0 auto 32px' }}>
-            Seu pedido foi confirmado com sucesso. Você receberá um e-mail com os detalhes da entrega.
-          </p>
-          <div style={{
-            background: 'rgba(74, 250, 130, 0.08)',
-            border: '1px solid rgba(74, 250, 130, 0.2)',
-            borderRadius: '12px', padding: '16px',
-            display: 'inline-block', marginBottom: '32px',
-          }}>
-            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>Número do pedido</div>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '22px', fontWeight: 700, color: '#4afa82' }}>
-              #AGR-{Math.floor(Math.random() * 90000) + 10000}
-            </div>
-          </div>
-          <br />
-          <button
-            onClick={onBack}
-            style={{
-              background: 'linear-gradient(135deg, #16a34a, #4afa82)',
-              border: 'none', borderRadius: '12px',
-              padding: '14px 32px', color: '#000',
-              fontSize: '15px', fontWeight: 700, cursor: 'pointer',
-              fontFamily: "'Inter', sans-serif",
-            }}
-          >
-            Continuar Comprando
-          </button>
-        </motion.div>
-      </div>
+      <PageShell titulo="Meu carrinho" onVoltar={onBack}>
+        <EmptyState
+          icone={<ShoppingCart size={44} />}
+          titulo="Seu carrinho está vazio"
+          texto="Explore os produtos frescos dos produtores da sua região."
+          acao={{ rotulo: 'Ver produtos', onClick: () => app.go('/') }}
+        />
+      </PageShell>
     );
   }
 
-  return (
-    <div style={{ background: '#040e07', minHeight: '100vh', fontFamily: "'Inter', sans-serif" }}>
-      <div className="max-w-6xl mx-auto px-4 py-6">
+  // Preço unitário confirmado pelo servidor (atacado/oferta) ou o da vitrine enquanto carrega
+  const precoConfirmado = (id: string) => {
+    for (const g of grupos ?? []) {
+      const item = g.itens.find(i => String(i.anuncio_id) === id);
+      if (item) return item.preco_unitario;
+    }
+    return null;
+  };
 
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <button
-            onClick={onBack}
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(74,250,130,0.15)',
-              borderRadius: '10px', padding: '8px 16px',
-              color: 'rgba(255,255,255,0.7)', fontSize: '13px',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-            }}
-          >
-            <ArrowLeft size={16} /> Continuar Comprando
-          </button>
-          <div>
-            <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '28px', fontWeight: 800, color: '#fff' }}>
-              Meu Carrinho
-            </h1>
-            <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)' }}>
-              {items.length} {items.length === 1 ? 'item' : 'itens'}
-            </p>
-          </div>
+  const subtotal = grupos
+    ? grupos.reduce((acc, g) => acc + g.subtotal, 0)
+    : items.reduce((acc, i) => acc + i.product.precoEfetivo * i.quantity, 0);
+
+  const porVendedor = new Map<string, CartItem[]>();
+  for (const item of items) {
+    const chaveV = item.product.anuncianteId || item.product.producer;
+    if (!porVendedor.has(chaveV)) porVendedor.set(chaveV, []);
+    porVendedor.get(chaveV)!.push(item);
+  }
+
+  const irParaCheckout = () => {
+    if (!app.user) app.pedirLogin('/checkout');
+    else app.go('/checkout');
+  };
+
+  return (
+    <PageShell
+      titulo="Meu carrinho"
+      subtitulo={`${app.carrinho.totalItens} ${app.carrinho.totalItens === 1 ? 'item' : 'itens'} de ${porVendedor.size} ${porVendedor.size === 1 ? 'produtor' : 'produtores'}`}
+      onVoltar={onBack}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+        <div className="flex flex-col gap-4">
+          {erro && (
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: '#FBE7E7', border: '1px solid rgba(214,69,69,0.3)', borderRadius: '12px', padding: '12px 14px', color: '#9B2C2C', fontSize: '14px' }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <span>{erro} Ajuste a quantidade ou remova o item para continuar.</span>
+            </div>
+          )}
+
+          {[...porVendedor.entries()].map(([chaveV, itens]) => (
+            <Card key={chaveV} padding="0">
+              <div className="flex items-center gap-2" style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '14px' }}>
+                <Store size={16} color={C.brown} />
+                <button
+                  onClick={() => app.go(`/produtor/${itens[0].product.anuncianteId}`)}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontWeight: 600, color: C.text, fontFamily: FONT }}
+                >
+                  {itens[0].product.producer}
+                </button>
+                <span style={{ color: C.muted }}>· {itens[0].product.location}</span>
+              </div>
+              <AnimatePresence initial={false}>
+                {itens.map(item => {
+                  const unitario = precoConfirmado(item.product.id) ?? item.product.precoEfetivo;
+                  const atacado = unitario < item.product.precoEfetivo;
+                  const limite = item.product.estoque ?? 999;
+                  return (
+                    <motion.div
+                      key={item.product.id}
+                      layout
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex flex-wrap sm:flex-nowrap items-center gap-4"
+                      style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}
+                    >
+                      <button
+                        onClick={() => app.go(`/produto/${item.product.id}`)}
+                        style={{ width: '76px', height: '76px', borderRadius: '10px', overflow: 'hidden', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, background: C.border }}
+                      >
+                        <ImageWithFallback src={item.product.image} alt={item.product.name} style={imagemCover} />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div style={{ fontSize: '12px', color: C.brown, fontWeight: 600 }}>{item.product.category}</div>
+                        <div style={{ fontSize: '15px', fontWeight: 600 }}>{item.product.name}</div>
+                        <div style={{ fontSize: '13px', color: C.muted, marginTop: '2px' }}>
+                          {formatCurrency(unitario)} / {UNIDADES[item.product.unidade]?.curto ?? 'un'}
+                          {atacado && <span style={{ color: C.success, fontWeight: 600 }}> · preço de atacado</span>}
+                          {item.product.estoque !== null && <span> · {item.product.estoque} em estoque</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center" style={{ border: `1px solid ${C.border}`, borderRadius: '10px', height: '40px' }}>
+                        <button aria-label="Diminuir" onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)} style={qtdBtn}>
+                          <Minus size={15} />
+                        </button>
+                        <span style={{ width: '34px', textAlign: 'center', fontWeight: 600 }}>{item.quantity}</span>
+                        <button
+                          aria-label="Aumentar"
+                          disabled={item.quantity >= limite}
+                          onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
+                          style={{ ...qtdBtn, opacity: item.quantity >= limite ? 0.35 : 1 }}
+                        >
+                          <Plus size={15} />
+                        </button>
+                      </div>
+                      <div style={{ minWidth: '96px', textAlign: 'right', fontWeight: 700, color: C.orange }}>
+                        {formatCurrency(unitario * item.quantity)}
+                      </div>
+                      <button onClick={() => onRemove(item.product.id)} aria-label="Remover do carrinho" style={{ ...botaoSecundario, padding: '8px', color: C.danger }}>
+                        <Trash2 size={16} />
+                      </button>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </Card>
+          ))}
         </div>
 
-        {items.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 20px' }}>
-            <ShoppingCart size={64} color="rgba(74,250,130,0.3)" style={{ margin: '0 auto 20px' }} />
-            <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '24px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>
-              Seu carrinho está vazio
-            </h2>
-            <p style={{ color: 'rgba(255,255,255,0.4)', marginBottom: '28px' }}>
-              Explore nosso marketplace e adicione produtos ao carrinho
-            </p>
-            <button
-              onClick={onBack}
-              style={{
-                background: 'linear-gradient(135deg, #16a34a, #4afa82)',
-                border: 'none', borderRadius: '12px',
-                padding: '14px 32px', color: '#000',
-                fontSize: '15px', fontWeight: 700, cursor: 'pointer',
-                fontFamily: "'Inter', sans-serif",
-              }}
-            >
-              Explorar Produtos
-            </button>
+        <Card style={{ position: 'sticky', top: '72px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '14px' }}>Resumo</h2>
+          <div className="flex justify-between" style={{ fontSize: '14px', marginBottom: '8px' }}>
+            <span style={{ color: C.muted }}>Produtos</span>
+            <span style={{ fontWeight: 600 }}>{formatCurrency(subtotal)}</span>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-            {/* Cart items */}
-            <div style={{ gridColumn: '1 / span 2' }}>
-              <div className="flex flex-col gap-4">
-                <AnimatePresence initial={false}>
-                {items.map(({ product, quantity }) => (
-                  <motion.div
-                    key={product.id}
-                    layout
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, x: -40, transition: { duration: 0.2 } }}
-                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                    style={{
-                    background: 'rgba(10, 28, 15, 0.8)',
-                    backdropFilter: 'blur(10px)',
-                    border: '1px solid rgba(74,250,130,0.12)',
-                    borderRadius: '16px', padding: '16px',
-                    display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap',
-                  }}>
-                    <div style={{ width: '90px', height: '90px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0 }}>
-                      <ImageWithFallback
-                        src={product.image}
-                        alt={product.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: '180px' }}>
-                      <div style={{ fontSize: '12px', color: '#4afa82', marginBottom: '3px' }}>{product.category}</div>
-                      <div style={{ fontSize: '15px', fontWeight: 600, color: '#fff', marginBottom: '4px', lineHeight: 1.3 }}>
-                        {product.name}
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
-                        {product.producer} • {product.location}
-                      </div>
-                    </div>
-
-                    {/* Quantity controls */}
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: '0',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(74,250,130,0.15)',
-                      borderRadius: '10px', overflow: 'hidden',
-                    }}>
-                      <button
-                        onClick={() => quantity <= 1 ? onRemove(product.id) : onUpdateQuantity(product.id, quantity - 1)}
-                        style={{
-                          width: '36px', height: '36px', background: 'none', border: 'none',
-                          color: '#4afa82', fontSize: '18px', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                      >
-                        −
-                      </button>
-                      <span style={{
-                        width: '36px', textAlign: 'center', color: '#fff',
-                        fontSize: '15px', fontWeight: 600,
-                      }}>
-                        {quantity}
-                      </span>
-                      <button
-                        onClick={() => onUpdateQuantity(product.id, quantity + 1)}
-                        style={{
-                          width: '36px', height: '36px', background: 'none', border: 'none',
-                          color: '#4afa82', fontSize: '18px', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-
-                    <div style={{ textAlign: 'right', minWidth: '100px' }}>
-                      <div style={{
-                        fontFamily: "'Space Grotesk', sans-serif",
-                        fontSize: '18px', fontWeight: 700, color: '#4afa82',
-                      }}>
-                        {formatCurrency(product.price * quantity)}
-                      </div>
-                      {quantity > 1 && (
-                        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
-                          {formatCurrency(product.price)} cada
-                        </div>
-                      )}
-                    </div>
-
-                    <motion.button
-                      whileHover={{ scale: 1.1, rotate: -8 }}
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => onRemove(product.id)}
-                      style={{
-                        background: 'rgba(239,68,68,0.1)',
-                        border: '1px solid rgba(239,68,68,0.2)',
-                        borderRadius: '8px', padding: '8px',
-                        cursor: 'pointer', color: '#f87171',
-                      }}
-                    >
-                      <Trash2 size={15} />
-                    </motion.button>
-                  </motion.div>
-                ))}
-                </AnimatePresence>
-              </div>
-
-              {/* Delivery info */}
-              <div style={{
-                marginTop: '16px',
-                background: 'rgba(74, 250, 130, 0.06)',
-                border: '1px solid rgba(74,250,130,0.15)',
-                borderRadius: '12px', padding: '14px',
-                display: 'flex', alignItems: 'center', gap: '10px',
-              }}>
-                <Truck size={18} color="#4afa82" />
-                <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)' }}>
-                  {subtotal > 500
-                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><PartyPopper size={16} color="#4afa82" /> Frete grátis para este pedido!</span>
-                    : `Adicione mais ${formatCurrency(500 - subtotal)} para frete grátis`}
-                </span>
-              </div>
-            </div>
-
-            {/* Order summary */}
-            <div>
-              <div style={{
-                background: 'rgba(10, 28, 15, 0.9)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(74,250,130,0.15)',
-                borderRadius: '20px', padding: '24px',
-                position: 'sticky', top: '100px',
-              }}>
-                <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '20px' }}>
-                  Resumo do Pedido
-                </h3>
-
-                <div className="flex flex-col gap-3" style={{ marginBottom: '20px' }}>
-                  <SummaryRow label="Subtotal" value={formatCurrency(subtotal)} />
-                  {couponApplied && <SummaryRow label="Desconto (10%)" value={`-${formatCurrency(discount)}`} green />}
-                  <SummaryRow label="Frete" value={shipping === 0 ? 'Grátis' : formatCurrency(shipping)} green={shipping === 0} />
-                </div>
-
-                <div style={{
-                  borderTop: '1px solid rgba(74,250,130,0.1)',
-                  paddingTop: '16px', marginBottom: '20px',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
-                  <span style={{ fontSize: '16px', fontWeight: 700, color: '#fff' }}>Total</span>
-                  <span style={{
-                    fontFamily: "'Space Grotesk', sans-serif",
-                    fontSize: '24px', fontWeight: 800, color: '#4afa82',
-                  }}>
-                    {formatCurrency(total)}
-                  </span>
-                </div>
-
-                {/* Coupon */}
-                {!couponApplied && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{
-                      display: 'flex', gap: '8px',
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(74,250,130,0.12)',
-                      borderRadius: '10px', overflow: 'hidden',
-                    }}>
-                      <input
-                        placeholder="Código de cupom"
-                        value={coupon}
-                        onChange={e => setCoupon(e.target.value)}
-                        style={{
-                          flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                          padding: '10px 14px', color: '#fff', fontSize: '13px',
-                          fontFamily: "'Inter', sans-serif",
-                        }}
-                      />
-                      <button
-                        onClick={handleCoupon}
-                        style={{
-                          background: 'rgba(74,250,130,0.15)',
-                          border: 'none', padding: '10px 14px',
-                          color: '#4afa82', fontSize: '13px', fontWeight: 600,
-                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                          fontFamily: "'Inter', sans-serif",
-                        }}
-                      >
-                        <Tag size={14} /> Aplicar
-                      </button>
-                    </div>
-                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '6px' }}>
-                      Dica: use AGRO10 para 10% de desconto
-                    </p>
-                  </div>
-                )}
-
-                {couponApplied && (
-                  <div style={{
-                    background: 'rgba(74,250,130,0.1)', border: '1px solid rgba(74,250,130,0.25)',
-                    borderRadius: '8px', padding: '8px 12px', marginBottom: '16px',
-                    fontSize: '13px', color: '#4afa82', display: 'flex', alignItems: 'center', gap: '6px',
-                  }}>
-                    <Check size={14} /> Cupom AGRO10 aplicado — 10% de desconto!
-                  </div>
-                )}
-
-                <button
-                  onClick={() => setCheckoutDone(true)}
-                  style={{
-                    width: '100%', padding: '16px',
-                    background: 'linear-gradient(135deg, #16a34a, #4afa82)',
-                    border: 'none', borderRadius: '12px',
-                    color: '#000', fontSize: '16px', fontWeight: 700,
-                    cursor: 'pointer', marginBottom: '12px',
-                    boxShadow: '0 8px 25px rgba(74,250,130,0.35)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                    fontFamily: "'Inter', sans-serif",
-                  }}
-                >
-                  Finalizar Pedido <ChevronRight size={18} />
-                </button>
-
-                <div className="flex items-center justify-center gap-2" style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}>
-                  <Shield size={12} />
-                  Pagamento 100% seguro e criptografado
-                </div>
-
-                {/* Payment icons */}
-                <div className="flex items-center justify-center gap-2 mt-4" style={{ flexWrap: 'wrap' }}>
-                  {['PIX', 'Visa', 'Master', 'Boleto', 'Parcelado'].map(m => (
-                    <span key={m} style={{
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '4px', padding: '3px 8px',
-                      fontSize: '10px', color: 'rgba(255,255,255,0.5)',
-                    }}>
-                      {m}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div className="flex justify-between" style={{ fontSize: '14px', marginBottom: '14px' }}>
+            <span style={{ color: C.muted }}>Frete</span>
+            <span style={{ color: C.muted }}>calculado no checkout</span>
           </div>
-        )}
+          <div className="flex gap-2" style={{ background: '#FBFAF7', border: `1px solid ${C.border}`, borderRadius: '10px', padding: '10px 12px', fontSize: '12.5px', color: '#4A4A45', marginBottom: '16px' }}>
+            <Truck size={16} color={C.brown} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <span>
+              Cada produtor gera um pedido separado. Frete grátis quando a compra de um produtor passa de {formatCurrency(freteGratisAcima)}; retirada no local é sempre grátis.
+            </span>
+          </div>
+          <button
+            onClick={irParaCheckout}
+            disabled={!!erro || carregando}
+            style={{ ...desabilitado(botaoPrimario, !!erro || carregando), width: '100%', height: '48px' }}
+          >
+            {carregando ? 'Conferindo preços...' : 'Finalizar compra'} <ArrowRight size={18} />
+          </button>
+          <button onClick={() => app.go('/')} style={{ ...botaoSecundario, width: '100%', marginTop: '10px' }}>
+            Continuar comprando
+          </button>
+        </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }
 
-function SummaryRow({ label, value, green }: { label: string; value: string; green?: boolean }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)' }}>{label}</span>
-      <span style={{ fontSize: '14px', fontWeight: 600, color: green ? '#4afa82' : 'rgba(255,255,255,0.8)' }}>{value}</span>
-    </div>
-  );
-}
+const qtdBtn: React.CSSProperties = {
+  width: '36px', height: '100%', border: 'none', background: 'none', cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.graphite,
+};

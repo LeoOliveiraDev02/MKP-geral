@@ -7,6 +7,8 @@
 
 // Importa o framework Express para habilitar os recursos de roteamento.
 const express = require('express');
+const validar = require('../middlewares/validarMiddleware');
+const { enderecos: esquema, paramsId } = require('../validacao/esquemas');
 
 // Importa o EnderecoController, que encapsula as regras de negócio e consultas ao banco para endereços.
 const EnderecoController = require('../controllers/EnderecoController');
@@ -34,7 +36,7 @@ router.get('/', EnderecoController.list);
  * Descrição: Cria um novo endereço associado ao usuário autenticado.
  * Mapeamento: EnderecoController.create
  */
-router.post('/', EnderecoController.create);
+router.post('/', validar({ body: esquema.corpo }), EnderecoController.create);
 
 /**
  * Rota: PUT /:id
@@ -42,7 +44,7 @@ router.post('/', EnderecoController.create);
  * Parâmetros de rota: ':id' representa uma variável de caminho (path parameter) capturada em req.params.id.
  * Mapeamento: EnderecoController.update
  */
-router.put('/:id', EnderecoController.update);
+router.put('/:id', validar({ params: paramsId, body: esquema.corpo }), EnderecoController.update);
 
 /**
  * Rota: DELETE /:id
@@ -50,7 +52,7 @@ router.put('/:id', EnderecoController.update);
  * Parâmetros de rota: ':id' representa o ID do endereço a ser excluído, obtido via req.params.id.
  * Mapeamento: EnderecoController.delete
  */
-router.delete('/:id', EnderecoController.delete);
+router.delete('/:id', validar({ params: paramsId }), EnderecoController.delete);
 
 // Exporta o roteador configurado para ser plugado no roteador principal da aplicação em routes/index.js.
 module.exports = router;

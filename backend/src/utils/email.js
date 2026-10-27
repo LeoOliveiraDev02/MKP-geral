@@ -55,6 +55,10 @@ async function getTransporter() {
         pass: process.env.SMTP_PASS
       }
     });
+  } else if (process.env.NODE_ENV === 'production') {
+    // Produção sem SMTP: não usa Ethereal (o link de prévia exporia códigos de recuperação nos logs).
+    logger.error('SMTP não configurado em produção: e-mails desativados.', new Error('SMTP ausente'));
+    transporter = 'console';
   } else {
     // Caso contrário, avisa no log que não há SMTP real e tenta usar o Ethereal (serviço gratuito de e-mails fake)
     logger.warn('SMTP is not fully configured. Attempting to create Ethereal test account...');
@@ -121,7 +125,7 @@ async function sendRecoveryEmail(toEmail, recoveryCode) {
     try {
       // Dispara o e-mail assincronamente através do transporte configurado
       const info = await activeTransporter.sendMail(mailOptions);
-      logger.info(`Recovery email sent to ${toEmail}. MessageId: ${info.messageId}`);
+      logger.info('Recovery email sent', { email: toEmail, messageId: info.messageId });
       
       // Se estiver rodando no Ethereal, podemos capturar o link para visualizar o e-mail no navegador
       const previewUrl = nodemailer.getTestMessageUrl(info);
@@ -131,12 +135,16 @@ async function sendRecoveryEmail(toEmail, recoveryCode) {
       }
       return true;
     } catch (error) {
-      logger.error(`Failed to send recovery email to ${toEmail}`, error);
+      logger.error('Failed to send recovery email', error, { email: toEmail });
       throw error;
     }
   } else {
-    // Caso o transporte seja 'console' (fallback local), imprime os detalhes do e-mail de forma legível no terminal
-    logger.info(`[SMTP Fallback] E-mail de recuperação de senha enviado para: ${toEmail}. Código: ${recoveryCode}`);
+    // Em produção, sem SMTP o código NUNCA vai para o terminal/logs (seria um vazamento).
+    if (process.env.NODE_ENV === 'production') {
+      logger.error('SMTP não configurado: e-mail de recuperação não enviado', new Error('SMTP ausente'), { email: toEmail });
+      return false;
+    }
+    // Caso o transporte seja 'console' (fallback local de DESENVOLVIMENTO), imprime os detalhes no terminal
     console.log(`\n==================================================`);
     console.log(`[SMTP FALLBACK]`);
     console.log(`Para: ${toEmail}`);
@@ -147,6 +155,50 @@ async function sendRecoveryEmail(toEmail, recoveryCode) {
   }
 }
 
+function escaparHtml(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/**
+ * Notificação transacional (pedido, mensagem, pergunta...). Mesmos três níveis
+ * de transporte da recuperação de senha; `link` aponta para o front.
+ */
+async function sendNotificationEmail(toEmail, { titulo, mensagem, link }) {
+  const url = link ? `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}${link}` : null;
+  const mailOptions = {
+    from: process.env.SMTP_FROM || 'no-reply@agrostand.com',
+    to: toEmail,
+    subject: `${titulo} - AgroMundo`,
+    text: `${titulo}
+
+${mensagem || ''}${url ? `
+
+Acesse: ${url}` : ''}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #E8E5DF; border-radius: 8px;">
+        <h2 style="color: #F4770B; margin-top: 0;">AgroMundo</h2>
+        <h3 style="color: #252522;">${escaparHtml(titulo)}</h3>
+        <p style="color: #444;">${escaparHtml(mensagem)}</p>
+        ${url ? `<p><a href="${escaparHtml(url)}" style="background:#F4770B;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Ver no AgroMundo</a></p>` : ''}
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
+        <p style="font-size: 12px; color: #999;">Você recebeu este e-mail porque tem uma conta no AgroMundo.</p>
+      </div>
+    `,
+  };
+
+  const activeTransporter = await getTransporter();
+  if (activeTransporter && activeTransporter !== 'console') {
+    const info = await activeTransporter.sendMail(mailOptions);
+    const previewUrl = nodemailer.getTestMessageUrl(info);
+    if (previewUrl) console.log(`[SMTP TEST] Notificação para ${toEmail}. Preview URL: ${previewUrl}`);
+    return true;
+  }
+  if (process.env.NODE_ENV === 'production') return false;
+  console.log(`[SMTP FALLBACK] Notificação para ${toEmail}: ${titulo} — ${mensagem || ''}${url ? ` (${url})` : ''}`);
+  return true;
+}
+
 module.exports = {
-  sendRecoveryEmail
+  sendRecoveryEmail,
+  sendNotificationEmail,
 };

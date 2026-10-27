@@ -5,7 +5,7 @@
  * aqui, para os componentes não conhecerem o formato snake_case da API.
  */
 
-import type { AnuncioDetalhe, AnuncioResumo, Categoria } from './types';
+import type { AnuncioDetalheVenda, AnuncioResumoVenda, CamposVenda, Categoria } from './types';
 import type { Category, Product } from '../components/agro/data';
 import { Apple, Carrot, LeafyGreen, Package, Sprout, Wheat, type LucideIcon } from 'lucide-react';
 
@@ -21,8 +21,23 @@ function location(cidade: string, uf: string): string {
   return [cidade, uf].filter(Boolean).join(', ');
 }
 
+function camposVenda(ad: CamposVenda) {
+  return {
+    unidade: ad.unidade ?? 'un',
+    estoque: ad.estoque ?? null,
+    pesoKg: ad.peso_kg ?? null,
+    precoPromocional: ad.preco_promocional ?? null,
+    promocaoAte: ad.promocao_ate ?? null,
+    emOferta: !!ad.em_oferta,
+    permiteEntrega: ad.permite_entrega ?? true,
+    permiteRetirada: ad.permite_retirada ?? true,
+    notaMedia: ad.nota_media ?? null,
+    totalAvaliacoes: ad.total_avaliacoes ?? 0,
+  };
+}
+
 /** Item da vitrine (GET /ads, GET /ads/me/products) → Product. */
-export function anuncioResumoToProduct(ad: AnuncioResumo): Product {
+export function anuncioResumoToProduct(ad: AnuncioResumoVenda): Product {
   const producer = `${ad.vendedor_nome} ${ad.vendedor_sobrenome}`.trim();
   const image = ad.imagem_principal ?? '';
   return {
@@ -39,11 +54,18 @@ export function anuncioResumoToProduct(ad: AnuncioResumo): Product {
     location: location(ad.cidade, ad.uf),
     zona: ad.zona,
     publishedAt: ad.data_publicacao,
+    anuncianteId: String(ad.anunciante_id),
+    ...camposVenda(ad),
+    precoEfetivo: ad.preco_efetivo ?? ad.preco,
+    vendedorVerificado: !!ad.vendedor_verificado,
+    distanciaKm: ad.distancia_km ?? null,
+    latitude: ad.latitude ?? null,
+    longitude: ad.longitude ?? null,
   };
 }
 
 /** Detalhe (GET /ads/:id) → Product, com galeria e contato do vendedor. */
-export function anuncioDetalheToProduct(ad: AnuncioDetalhe): Product {
+export function anuncioDetalheToProduct(ad: AnuncioDetalheVenda): Product {
   // O DAO já ordena PRINCIPAL primeiro e depois por `ordem`.
   const images = ad.imagens.map((img) => img.url);
   return {
@@ -61,16 +83,24 @@ export function anuncioDetalheToProduct(ad: AnuncioDetalhe): Product {
     zona: ad.localizacao.zona,
     publishedAt: ad.data_publicacao,
     whatsappUrl: ad.vendedor.link_whatsapp,
+    anuncianteId: String(ad.vendedor.id),
+    ...camposVenda(ad),
+    precoEfetivo: ad.preco_efetivo ?? ad.preco,
+    vendedorVerificado: !!ad.vendedor.verificado,
+    atacado: ad.atacado ?? [],
+    certificacoes: ad.certificacoes ?? [],
+    vendedorFoto: ad.vendedor.foto_url ?? null,
+    vendedorDesde: ad.vendedor.desde,
   };
 }
 
 // Aparência por nome de categoria (as categorias em si vêm do backend).
 const CATEGORY_LOOK: Record<string, { icon: LucideIcon; color: string }> = {
-  frutas: { icon: Apple, color: '#dc2626' },
-  legumes: { icon: Carrot, color: '#ea580c' },
-  verduras: { icon: LeafyGreen, color: '#16a34a' },
-  graos: { icon: Wheat, color: '#ca8a04' },
-  outros: { icon: Package, color: '#1d4ed8' },
+  frutas: { icon: Apple, color: '#D64545' },
+  legumes: { icon: Carrot, color: '#F4770B' },
+  verduras: { icon: LeafyGreen, color: '#6B8E3D' },
+  graos: { icon: Wheat, color: '#C08A2B' },
+  outros: { icon: Package, color: '#8C5A32' },
 };
 
 function normalize(value: string): string {
@@ -78,6 +108,6 @@ function normalize(value: string): string {
 }
 
 export function categoriaToCategory(cat: Categoria): Category {
-  const look = CATEGORY_LOOK[normalize(cat.nome)] ?? { icon: Sprout, color: '#16a34a' };
+  const look = CATEGORY_LOOK[normalize(cat.nome)] ?? { icon: Sprout, color: '#8C5A32' };
   return { id: String(cat.id), name: cat.nome, ...look };
 }

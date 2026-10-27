@@ -1,8 +1,24 @@
+# Dependências e builds
 node_modules/
 dist/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+
+# Segredos: NUNCA versionar .env (use .env.example como modelo)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Chaves de assinatura do app Android
+*.jks
+*.keystore
+android/keystore.properties
+
+# Logs e sistema
 *.log
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/

@@ -10,7 +10,8 @@
  * associados à identidade de um usuário do sistema.
  */
 
-const bcrypt = require('bcryptjs');
+// Comparação de senha (bcrypt + pepper, ver utils/senha.js)
+const { verificarSenha } = require('../utils/senha');
 
 class Usuario {
   // Uso de campos privados (#) do JavaScript moderno para garantir o encapsulamento rígido.
@@ -88,7 +89,7 @@ class Usuario {
    */
   autenticar(email, senha) {
     // Verifica se o e-mail coincide e depois usa o bcrypt de forma síncrona para comparar a senha pura com o hash
-    return this.#email === email && bcrypt.compareSync(senha, this.#senhaHash); 
+    return this.#email === email && verificarSenha(senha, this.#senhaHash); 
   }
 
   /**

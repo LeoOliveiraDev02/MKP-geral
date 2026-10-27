@@ -67,7 +67,16 @@ function databaseUrl() {
 
 function getDb() {
   if (db) return db;
-  pool = new RlsPool({ connectionString: databaseUrl() });
+  // TLS: use `?sslmode=require` (ou verify-full) na DATABASE_URL quando o banco
+  // não estiver na mesma rede privada. Timeouts evitam que uma consulta presa
+  // ou pesada segure conexões indefinidamente (DoS de aplicação).
+  pool = new RlsPool({
+    connectionString: databaseUrl(),
+    max: parseInt(process.env.DB_POOL_MAX || '20', 10),
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
+    statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT_MS || '15000', 10),
+  });
   db = drizzle(pool, { schema });
   return db;
 }

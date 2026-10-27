@@ -2,6 +2,7 @@
 // convertidos para estes tipos em src/app/api/mappers.ts.
 
 import type { LucideIcon } from 'lucide-react';
+import type { CertificacaoDTO, FaixaAtacado, TipoCertificacao, Unidade } from '../../api/types';
 
 export type Category = {
   id: string;
@@ -26,7 +27,57 @@ export type Product = {
   publishedAt?: string;
   /** Link click-to-chat do vendedor (só no detalhe do anúncio). */
   whatsappUrl?: string | null;
+  // ─── Venda ───
+  anuncianteId: string;
+  unidade: Unidade;
+  /** null = sem controle de estoque */
+  estoque: number | null;
+  pesoKg: number | null;
+  precoPromocional: number | null;
+  promocaoAte: string | null;
+  emOferta: boolean;
+  /** Preço cobrado agora (promocional quando a oferta está vigente). */
+  precoEfetivo: number;
+  permiteEntrega: boolean;
+  permiteRetirada: boolean;
+  notaMedia: number | null;
+  totalAvaliacoes: number;
+  vendedorVerificado: boolean;
+  distanciaKm?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  // Só no detalhe
+  atacado?: FaixaAtacado[];
+  certificacoes?: CertificacaoDTO[];
+  vendedorFoto?: string | null;
+  vendedorDesde?: string;
 };
+
+export const UNIDADES: Record<Unidade, { curto: string; longo: string }> = {
+  un: { curto: 'un', longo: 'unidade' },
+  kg: { curto: 'kg', longo: 'quilo' },
+  g: { curto: 'g', longo: 'grama' },
+  dz: { curto: 'dz', longo: 'dúzia' },
+  maco: { curto: 'maço', longo: 'maço' },
+  bandeja: { curto: 'bandeja', longo: 'bandeja' },
+  litro: { curto: 'L', longo: 'litro' },
+  saca: { curto: 'saca', longo: 'saca' },
+  caixa: { curto: 'cx', longo: 'caixa' },
+  pe: { curto: 'pé', longo: 'pé' },
+};
+
+export const CERTIFICACOES: Record<TipoCertificacao, string> = {
+  ORGANICO: 'Orgânico',
+  SIF: 'SIF (inspeção federal)',
+  SIE: 'SIE (inspeção estadual)',
+  SIM: 'SIM (inspeção municipal)',
+  SISBI: 'SISBI-POA',
+};
+
+/** "por kg", "por dúzia"... (vazio para unidade). */
+export function porUnidade(unidade: Unidade): string {
+  return unidade === 'un' ? 'por unidade' : `por ${UNIDADES[unidade].longo}`;
+}
 
 export const PROMO_BANNERS = [
   {

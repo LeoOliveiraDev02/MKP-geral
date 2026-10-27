@@ -6,8 +6,8 @@
  * no objeto de requisição (req), permitindo que controladores subsequentes acessem o usuário autenticado.
  */
 
-// Importa a biblioteca jsonwebtoken, usada para gerar e verificar tokens JWT (JSON Web Tokens).
-const jwt = require('jsonwebtoken');
+// Leitura do token (Bearer ou cookie HttpOnly + CSRF) e verificação do JWT.
+const { lerToken, verificarSessao } = require('../utils/sessao');
 
 // Importa o DAO de Usuário para validar a existência do usuário no banco (PostgreSQL).
 const UsuarioDAO = require('../dao/UsuarioDAO');
@@ -19,6 +19,9 @@ const { hashToken } = require('../utils/tokens');
 // Contexto do RLS (PostgreSQL): quem é o usuário das consultas desta requisição.
 const { runAsUser, runAsSystem } = require('../db/context');
 
+// Sessão no servidor: revogada, ociosa ou inexistente → 401.
+const SessaoService = require('../services/SessaoService');
+
 /**
  * Middleware que intercepta a requisição e valida a presença e integridade do token JWT.
  * 
@@ -27,26 +30,37 @@ const { runAsUser, runAsSystem } = require('../db/context');
  * @param {Function} next - Função de callback para passar o controle ao próximo middleware ou rota.
  */
 async function authMiddleware(req, res, next) {
-  // Obtém o cabeçalho 'Authorization' enviado na requisição HTTP.
-  const authHeader = req.headers.authorization;
-
-  // Um cabeçalho JWT válido deve existir e iniciar com o prefixo 'Bearer '.
-  // Exemplo de formato: "Bearer <token_jwt_aqui>"
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  // Token vem do cabeçalho 'Authorization: Bearer <jwt>' (app nativo/integrações)
+  // ou do cookie HttpOnly de sessão (navegador).
+  const { token, origem, csrfOk } = lerToken(req);
+  if (!token) {
     return res.status(401).json({
       status: 'error',
       message: 'Acesso negado. Token não fornecido.'
     });
   }
 
-  // Divide a string do cabeçalho pelo espaço e extrai apenas o token (segundo elemento do array).
-  const token = authHeader.split(' ')[1];
+  // Sessão por cookie: requisições que alteram dados exigem o cabeçalho CSRF.
+  if (!csrfOk) {
+    return res.status(403).json({
+      status: 'error',
+      message: 'Requisição bloqueada: token CSRF ausente ou inválido. Recarregue a página.'
+    });
+  }
 
   try {
     // Decodifica e verifica a assinatura do token usando a chave secreta definida nas variáveis de ambiente.
     // Se o token for inválido, adulterado ou estiver expirado, um erro será lançado e capturado pelo bloco 'catch'.
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret_key_default');
-    
+    const decoded = verificarSessao(token);
+
+    // Sessão encerrada (logout, "sair de todos", troca de senha) ou ociosa demais.
+    if (!(await SessaoService.validar(decoded))) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Sessão encerrada. Faça login novamente.'
+      });
+    }
+
     // Busca o usuário no banco de dados utilizando o ID decodificado do token payload.
     // Isso garante uma camada extra de segurança caso o usuário tenha sido excluído recentemente da plataforma.
     const user = await runAsUser(decoded.id, () => UsuarioDAO.findById(decoded.id));
@@ -63,6 +77,10 @@ async function authMiddleware(req, res, next) {
 
     // Expõe o token bruto para fluxos que precisam dele (ex: logout/UC13).
     req.token = token;
+    req.authOrigem = origem;
+
+    // Claims da sessão (ex: `mfa` = passou pelo segundo fator; exigido no admin).
+    req.auth = decoded;
 
     // UC13: token revogado no logout não reentra (pós-condição do Encerrar Sessão).
     // Denylist é tabela interna (RLS: só sistema).

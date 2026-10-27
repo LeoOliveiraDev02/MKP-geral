@@ -27,6 +27,39 @@ if (!fs.existsSync(logDir)) {
 // Define o caminho absoluto para o arquivo que armazenará os logs de auditoria
 const auditLogPath = path.join(logDir, 'audit.log');
 
+// ─── Redação de dados sensíveis (LGPD / segurança) ───
+// Nenhum log grava senha, token, cookie, código de verificação, segredo ou
+// documento; e-mails e telefones saem mascarados (ex: jo***@gmail.com).
+const CHAVES_SECRETAS = /senha|password|passwd|token|authorization|cookie|secret|segredo|credential|codigo|code|otp|mfa|cpf|cnpj|cartao|card|cvv/i;
+const CHAVES_MASCARADAS = /email|telefone|phone/i;
+const REGEX_EMAIL = /([A-Za-z0-9._%+-]{1,2})[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+const REGEX_QUERY_SENSIVEL = /([?&](?:token|email|codigo|code|senha|password|secret|credential)=)[^&#]*/gi;
+
+function mascararTexto(valor) {
+  return String(valor).replace(REGEX_QUERY_SENSIVEL, '$1[REDACTED]').replace(REGEX_EMAIL, '$1***@$2');
+}
+
+function mascararContato(valor) {
+  const texto = String(valor);
+  if (texto.includes('@')) return mascararTexto(texto);
+  return texto.length > 4 ? `${'*'.repeat(texto.length - 4)}${texto.slice(-4)}` : '****';
+}
+
+function sanitizar(valor, chave = '', profundidade = 0) {
+  if (valor === null || valor === undefined) return valor;
+  if (profundidade > 5) return '[...]';
+  // Stack trace é útil para depurar e não carrega dados do usuário.
+  if (chave === 'errorStack') return valor;
+  if (chave && CHAVES_SECRETAS.test(chave)) return '[REDACTED]';
+  if (chave && CHAVES_MASCARADAS.test(chave) && typeof valor !== 'object') return mascararContato(valor);
+  if (Array.isArray(valor)) return valor.map((v) => sanitizar(v, '', profundidade + 1));
+  if (typeof valor === 'object') {
+    return Object.fromEntries(Object.entries(valor).map(([k, v]) => [k, sanitizar(v, k, profundidade + 1)]));
+  }
+  if (typeof valor === 'string') return mascararTexto(valor);
+  return valor;
+}
+
 /**
  * Função interna centralizada de gravação e exibição de logs.
  * Formata os dados de log em formato JSON para fácil processamento por sistemas de monitoramento modernos (como Kibana/Grafana).
@@ -40,8 +73,8 @@ function log(level, message, meta = {}) {
   const logEntry = {
     timestamp: new Date().toISOString(), // Marca de tempo em formato ISO 8601 (UTC)
     level,                               // Nível do log
-    message,                             // Mensagem
-    ...meta                              // Mescla quaisquer dados adicionais fornecidos
+    message: mascararTexto(message),     // Mensagem (e-mails mascarados)
+    ...sanitizar(meta)                   // Metadados sem dados sensíveis
   };
 
   // Transforma o objeto do log em uma string JSON de linha única
@@ -65,6 +98,8 @@ function log(level, message, meta = {}) {
 
 // Exportação dos métodos públicos simplificados para os desenvolvedores utilizarem nos controllers e middlewares
 module.exports = {
+  sanitizar,
+
   // Informação geral sobre operações bem-sucedidas do sistema (ex: conexão com banco de dados)
   info: (message, meta) => log('INFO', message, meta),
   

@@ -6,6 +6,7 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { FavoritoService } from '../../api/services';
 import { getErrorMessage } from '../../api/client';
 import type { Favorito } from '../../api/types';
+import { C, FONT } from './theme';
 
 type FavoritesPageProps = {
   onBack: () => void;
@@ -42,34 +43,34 @@ export function FavoritesPage({ onBack, onProductClick, onChange }: FavoritesPag
   };
 
   return (
-    <div style={{ background: '#040e07', minHeight: '100vh', fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ background: C.bg, minHeight: '100vh', fontFamily: FONT }}>
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={onBack}
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(74,250,130,0.15)',
+              background: '#FBFAF7',
+              border: '1px solid #E8E5DF',
               borderRadius: '10px', padding: '8px 16px',
-              color: 'rgba(255,255,255,0.7)', fontSize: '13px',
+              color: '#4A4A45', fontSize: '13px',
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
             }}
           >
             <ArrowLeft size={16} /> Voltar
           </button>
-          <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '26px', fontWeight: 800, color: '#fff' }}>
+          <h1 style={{ fontFamily: FONT, fontSize: '26px', fontWeight: 800, color: C.text }}>
             Meus Favoritos
           </h1>
         </div>
 
         {loading ? (
-          <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', padding: '60px 0' }}>Carregando favoritos...</p>
+          <p style={{ color: '#727272', textAlign: 'center', padding: '60px 0' }}>Carregando favoritos...</p>
         ) : error ? (
-          <p style={{ color: '#f87171', textAlign: 'center', padding: '60px 0' }}>{error}</p>
+          <p style={{ color: C.danger, textAlign: 'center', padding: '60px 0' }}>{error}</p>
         ) : favoritos.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 20px', color: 'rgba(255,255,255,0.4)' }}>
-            <Heart size={48} style={{ margin: '0 auto 16px', color: 'rgba(74,250,130,0.4)' }} />
-            <p style={{ fontSize: '18px', marginBottom: '8px', color: 'rgba(255,255,255,0.6)' }}>
+          <div style={{ textAlign: 'center', padding: '80px 20px', color: '#727272' }}>
+            <Heart size={48} style={{ margin: '0 auto 16px', color: 'rgba(244,119,11,0.4)' }} />
+            <p style={{ fontSize: '18px', marginBottom: '8px', color: '#4A4A45' }}>
               Você ainda não favoritou nenhum anúncio
             </p>
             <p style={{ fontSize: '14px' }}>Toque no coração de um produto para salvá-lo aqui.</p>
@@ -83,15 +84,15 @@ export function FavoritesPage({ onBack, onProductClick, onChange }: FavoritesPag
                   key={fav.id}
                   onClick={() => disponivel && onProductClick({ id: String(fav.anuncio_id) })}
                   style={{
-                    background: 'rgba(10, 28, 15, 0.8)',
-                    border: '1px solid rgba(74,250,130,0.12)',
+                    background: '#FFFFFF',
+                    border: '1px solid #E8E5DF',
                     borderRadius: '14px', padding: '12px',
                     display: 'flex', gap: '14px', alignItems: 'center',
                     cursor: disponivel ? 'pointer' : 'default',
                     opacity: disponivel ? 1 : 0.55,
                   }}
                 >
-                  <div style={{ width: '72px', height: '72px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.04)' }}>
+                  <div style={{ width: '72px', height: '72px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: '#FBFAF7' }}>
                     {fav.anuncio?.imagem_principal && (
                       <ImageWithFallback
                         src={fav.anuncio.imagem_principal}
@@ -101,15 +102,15 @@ export function FavoritesPage({ onBack, onProductClick, onChange }: FavoritesPag
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#fff', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: C.text, marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {fav.anuncio?.nome ?? 'Anúncio removido'}
                     </div>
                     {fav.anuncio && (
-                      <div style={{ fontSize: '17px', fontWeight: 700, color: '#4afa82', fontFamily: "'Space Grotesk', sans-serif" }}>
+                      <div style={{ fontSize: '17px', fontWeight: 700, color: C.orange, fontFamily: FONT }}>
                         {formatCurrency(fav.anuncio.preco)}
                       </div>
                     )}
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
+                    <div style={{ fontSize: '11px', color: '#727272', marginTop: '2px' }}>
                       {disponivel ? `Favoritado em ${formatDate(fav.data_favorito) ?? '—'}` : 'Anúncio indisponível'}
                     </div>
                   </div>
@@ -120,7 +121,7 @@ export function FavoritesPage({ onBack, onProductClick, onChange }: FavoritesPag
                       background: 'rgba(239, 68, 68, 0.1)',
                       border: '1px solid rgba(239,68,68,0.2)',
                       borderRadius: '8px', padding: '8px',
-                      cursor: 'pointer', color: '#f87171', flexShrink: 0,
+                      cursor: 'pointer', color: C.danger, flexShrink: 0,
                     }}
                   >
                     <Trash2 size={16} />

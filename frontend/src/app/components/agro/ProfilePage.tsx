@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
 import {
-  ArrowLeft, Building2, ChevronRight, Hash, Lock, LogOut, Mail, MapPin, Pencil, Phone, Plus,
+  ArrowLeft, Building2, ChevronRight, Download, FileText, Hash, KeyRound, Lock, LogOut, Mail, MapPin, Monitor, Pencil, Phone, Plus,
   ShieldCheck, Trash2, TriangleAlert, User, UserRound, Wheat,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
-import { EnderecoService, UsuarioService } from '../../api/services';
+import { AutenticacaoService, EnderecoService, UsuarioService } from '../../api/services';
+import { CodigosRecuperacao, MfaSetup } from './MfaSetup';
+import type { SessaoAtiva } from '../../api/services';
 import { getErrorMessage } from '../../api/client';
 import { buscarCep } from '../../api/viacep';
 import type { Endereco, EnderecoInput, Usuario, Zona } from '../../api/types';
 import { maskCep, maskTelefone, onlyDigits } from '../../utils/masks';
 import { formatDate } from './data';
 import { FormField, SelectField, UFS, labelStyle } from './FormFields';
+import { C, FONT } from './theme';
 
 type ProfilePageProps = {
   user: Usuario;
@@ -21,14 +24,32 @@ type ProfilePageProps = {
   onAccountDeleted: () => void;
 };
 
-type Section = 'menu' | 'personal' | 'login' | 'addresses';
+type Section = 'menu' | 'personal' | 'login' | 'addresses' | 'security';
 
 const SECTION_TITLES: Record<Section, string> = {
   menu: 'Meu Perfil',
   personal: 'Dados pessoais',
   login: 'Dados de login',
   addresses: 'Endereços',
+  security: 'Segurança',
 };
+
+/** LGPD art. 18: baixa um JSON com todos os dados pessoais guardados pela plataforma. */
+async function baixarMeusDados() {
+  try {
+    const dados = await UsuarioService.exportData();
+    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'meus-dados-agromundo.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Arquivo com os seus dados gerado.');
+  } catch (err) {
+    toast.error(getErrorMessage(err));
+  }
+}
 
 export function ProfilePage({ user, onBack, onUserUpdate, onLogout, onAccountDeleted }: ProfilePageProps) {
   const [section, setSection] = useState<Section>('menu');
@@ -40,13 +61,13 @@ export function ProfilePage({ user, onBack, onUserUpdate, onLogout, onAccountDel
   };
 
   return (
-    <div style={{ background: '#040e07', minHeight: '100vh', fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ background: C.bg, minHeight: '100vh', fontFamily: FONT }}>
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-6">
           <button onClick={section === 'menu' ? onBack : () => open('menu')} style={backButtonStyle}>
             <ArrowLeft size={16} /> Voltar
           </button>
-          <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '26px', fontWeight: 800, color: '#fff' }}>
+          <h1 style={{ fontFamily: FONT, fontSize: '26px', fontWeight: 800, color: C.text }}>
             {SECTION_TITLES[section]}
           </h1>
         </div>
@@ -69,6 +90,7 @@ export function ProfilePage({ user, onBack, onUserUpdate, onLogout, onAccountDel
             {section === 'personal' && <PersonalForm user={user} onSaved={onUserUpdate} />}
             {section === 'login' && <LoginForm user={user} onSaved={onUserUpdate} />}
             {section === 'addresses' && <AddressList />}
+            {section === 'security' && <SecuritySection onLogout={onLogout} />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -101,21 +123,21 @@ function ProfileMenu({ user, onOpen, onLogout, onDelete }: {
       <div style={{ ...cardStyle, padding: '20px', display: 'flex', alignItems: 'center', gap: '16px', cursor: 'default' }}>
         <div style={{
           width: '60px', height: '60px', borderRadius: '50%', flexShrink: 0,
-          background: 'linear-gradient(135deg, #16a34a, #4afa82)',
+          background: '#F4770B',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#000', fontSize: '22px', fontWeight: 800, fontFamily: "'Space Grotesk', sans-serif",
+          color: '#fff', fontSize: '22px', fontWeight: 800, fontFamily: FONT,
         }}>
           {initials || <UserRound size={28} />}
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {user.nome} {user.sobrenome}
           </div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '13px', color: '#727272', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {user.email}
           </div>
           {memberSince && (
-            <div style={{ fontSize: '11px', color: 'rgba(74,250,130,0.7)', marginTop: '2px' }}>
+            <div style={{ fontSize: '11px', color: 'rgba(244,119,11,0.7)', marginTop: '2px' }}>
               Membro desde {memberSince}
             </div>
           )}
@@ -126,6 +148,12 @@ function ProfileMenu({ user, onOpen, onLogout, onDelete }: {
         <MenuCard icon={<User size={20} />} title="Dados pessoais" subtitle="Nome, sobrenome e telefone" onClick={() => onOpen('personal')} />
         <MenuCard icon={<ShieldCheck size={20} />} title="Dados de login" subtitle="E-mail e senha de acesso" onClick={() => onOpen('login')} />
         <MenuCard icon={<MapPin size={20} />} title="Endereços" subtitle="Gerencie seus endereços cadastrados" onClick={() => onOpen('addresses')} />
+      </MenuGroup>
+
+      <MenuGroup title="Segurança e privacidade">
+        <MenuCard icon={<KeyRound size={20} />} title="Segurança da conta" subtitle="Verificação em duas etapas e aparelhos conectados" onClick={() => onOpen('security')} />
+        <MenuCard icon={<Download size={20} />} title="Baixar meus dados" subtitle="Cópia de tudo o que guardamos sobre você (LGPD)" onClick={baixarMeusDados} />
+        <MenuCard icon={<FileText size={20} />} title="Política de privacidade" subtitle="Como tratamos e protegemos seus dados" onClick={() => window.open('/privacidade', '_blank', 'noopener')} />
       </MenuGroup>
 
       <MenuGroup title="Sessão">
@@ -139,11 +167,169 @@ function ProfileMenu({ user, onOpen, onLogout, onDelete }: {
   );
 }
 
+// ─── Verificação em duas etapas ───
+
+function SecuritySection({ onLogout }: { onLogout: () => void }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <MfaSection />
+      <SessionsSection onLogout={onLogout} />
+    </div>
+  );
+}
+
+/** Aparelhos conectados: encerrar um deles ou sair de todos. */
+function SessionsSection({ onLogout }: { onLogout: () => void }) {
+  const [sessoes, setSessoes] = useState<SessaoAtiva[] | null>(null);
+
+  const carregar = () => {
+    AutenticacaoService.listarSessoes().then(setSessoes).catch(err => toast.error(getErrorMessage(err)));
+  };
+  useEffect(carregar, []);
+
+  const encerrar = async (id: string) => {
+    try {
+      await AutenticacaoService.encerrarSessao(id);
+      toast.success('Sessão encerrada.');
+      carregar();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  const sairDeTodos = async () => {
+    if (!window.confirm('Sair de todos os aparelhos, inclusive deste?')) return;
+    try {
+      await AutenticacaoService.logoutAll();
+    } catch {
+      // a sessão local é limpa de qualquer forma
+    }
+    toast.success('Você saiu de todos os aparelhos.');
+    onLogout();
+  };
+
+  return (
+    <div style={{ ...cardStyle, padding: '20px', cursor: 'default' }} className="flex flex-col gap-3">
+      <CardTitle icon={<Monitor size={16} />}>Aparelhos conectados</CardTitle>
+      {sessoes === null ? (
+        <p style={{ color: '#727272' }}>Carregando...</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {sessoes.map(s => (
+            <li key={s.id} className="flex items-center justify-between gap-3" style={{ fontSize: '14px', color: C.text }}>
+              <span>
+                <strong>{s.dispositivo}</strong>
+                {s.atual && <span style={{ color: '#16a34a', fontWeight: 600 }}> · este aparelho</span>}
+                <br />
+                <span style={{ fontSize: '12px', color: '#727272' }}>
+                  Último uso: {formatDate(s.ultimoUso)}{s.ip ? ` · IP ${s.ip}` : ''}
+                </span>
+              </span>
+              {!s.atual && (
+                <button onClick={() => encerrar(s.id)} style={{ ...dangerButtonStyle, padding: '6px 10px' }}>Encerrar</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <button onClick={sairDeTodos} style={dangerButtonStyle}>
+        <LogOut size={16} style={{ display: 'inline', marginRight: '6px' }} /> Sair de todos os aparelhos
+      </button>
+    </div>
+  );
+}
+
+/** Verificação em duas etapas (TOTP) + códigos de recuperação. */
+function MfaSection() {
+  const [ativo, setAtivo] = useState<boolean | null>(null);
+  const [restantes, setRestantes] = useState(0);
+  const [codigo, setCodigo] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [novosCodigos, setNovosCodigos] = useState<string[] | null>(null);
+
+  const carregar = () => {
+    AutenticacaoService.mfaStatus()
+      .then(s => { setAtivo(s.ativo); setRestantes(s.codigosRecuperacaoRestantes ?? 0); })
+      .catch(err => toast.error(getErrorMessage(err)));
+  };
+
+  const regenerar = async () => {
+    setEnviando(true);
+    try {
+      setNovosCodigos(await AutenticacaoService.mfaRegenerarCodigos(codigo));
+      setCodigo('');
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setEnviando(false);
+    }
+  };
+  useEffect(carregar, []);
+
+  const desativar = async () => {
+    setEnviando(true);
+    try {
+      await AutenticacaoService.mfaDisable(codigo);
+      toast.success('Verificação em duas etapas desativada.');
+      setCodigo('');
+      carregar();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div style={{ ...cardStyle, padding: '20px', cursor: 'default' }}>
+      <p style={{ fontSize: '14px', color: '#727272', marginBottom: '16px', lineHeight: 1.5 }}>
+        Com a verificação em duas etapas, além da senha é pedido um código que muda a cada 30 segundos
+        no seu celular. Mesmo que alguém descubra sua senha, não consegue entrar.
+      </p>
+      {novosCodigos ? (
+        <CodigosRecuperacao codigos={novosCodigos} onConcluir={() => { setNovosCodigos(null); carregar(); }} />
+      ) : ativo === null ? (
+        <p style={{ color: '#727272' }}>Carregando...</p>
+      ) : ativo ? (
+        <div className="flex flex-col gap-3">
+          <p style={{ fontSize: '14px', color: C.text, fontWeight: 600 }}>
+            <ShieldCheck size={16} style={{ display: 'inline', marginRight: '6px', color: '#16a34a' }} />
+            Ativada nesta conta.
+          </p>
+          <p style={{ fontSize: '13px', color: restantes <= 2 ? '#b91c1c' : '#727272' }}>
+            Códigos de recuperação disponíveis: {restantes}
+          </p>
+          <label style={labelStyle}>Informe um código do autenticador para gerar novos códigos de recuperação ou desativar</label>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              value={codigo}
+              onChange={e => setCodigo(onlyDigits(e.target.value).slice(0, 6))}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="000000"
+              aria-label="Código do autenticador"
+              style={{ padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(37,37,34,0.15)', maxWidth: '140px', letterSpacing: '3px' }}
+            />
+            <button onClick={regenerar} disabled={enviando || codigo.length !== 6} style={{ ...dangerButtonStyle, color: C.text, borderColor: 'rgba(37,37,34,0.2)' }}>
+              Novos códigos
+            </button>
+            <button onClick={desativar} disabled={enviando || codigo.length !== 6} style={dangerButtonStyle}>
+              Desativar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <MfaSetup onAtivado={carregar} />
+      )}
+    </div>
+  );
+}
+
 function MenuGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
       <h2 style={{
-        fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: 600,
+        fontSize: '12px', color: '#727272', fontWeight: 600,
         letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '10px',
       }}>
         {title}
@@ -158,7 +344,7 @@ function MenuGroup({ title, children }: { title: string; children: React.ReactNo
 function MenuCard({ icon, title, subtitle, onClick, danger }: {
   icon: React.ReactNode; title: string; subtitle: string; onClick: () => void; danger?: boolean;
 }) {
-  const accent = danger ? '#f87171' : '#4afa82';
+  const accent = danger ? C.danger : C.orange;
   return (
     <li>
       <motion.button
@@ -175,16 +361,16 @@ function MenuCard({ icon, title, subtitle, onClick, danger }: {
       >
         <div style={{
           width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
-          background: danger ? 'rgba(239,68,68,0.12)' : 'rgba(74,250,130,0.1)',
+          background: danger ? 'rgba(239,68,68,0.12)' : 'rgba(244,119,11,0.1)',
           color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           {icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '15px', fontWeight: 600, color: danger ? '#f87171' : '#fff' }}>{title}</div>
-          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', marginTop: '2px' }}>{subtitle}</div>
+          <div style={{ fontSize: '15px', fontWeight: 600, color: danger ? C.danger : C.text }}>{title}</div>
+          <div style={{ fontSize: '12px', color: '#727272', marginTop: '2px' }}>{subtitle}</div>
         </div>
-        <ChevronRight size={18} color={danger ? 'rgba(248,113,113,0.6)' : 'rgba(255,255,255,0.3)'} />
+        <ChevronRight size={18} color={danger ? 'rgba(248,113,113,0.6)' : '#727272'} />
       </motion.button>
     </li>
   );
@@ -242,6 +428,7 @@ function PersonalForm({ user, onSaved }: { user: Usuario; onSaved: (u: Usuario) 
 
 function LoginForm({ user, onSaved }: { user: Usuario; onSaved: (u: Usuario) => void }) {
   const [email, setEmail] = useState(user.email);
+  const [senhaEmail, setSenhaEmail] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
 
@@ -257,8 +444,9 @@ function LoginForm({ user, onSaved }: { user: Usuario; onSaved: (u: Usuario) => 
     setEmailError(null);
     try {
       const usuario = await UsuarioService.updateProfile({
-        nome: user.nome, sobrenome: user.sobrenome, telefone: user.telefone, email,
+        nome: user.nome, sobrenome: user.sobrenome, telefone: user.telefone, email, senhaAtual: senhaEmail,
       });
+      setSenhaEmail('');
       onSaved(usuario);
       toast.success('E-mail atualizado.');
     } catch (err) {
@@ -294,6 +482,9 @@ function LoginForm({ user, onSaved }: { user: Usuario; onSaved: (u: Usuario) => 
       <form onSubmit={handleEmail} style={{ ...cardStyle, cursor: 'default', padding: '20px' }} className="flex flex-col gap-4">
         <CardTitle icon={<Mail size={16} />}>E-mail de acesso</CardTitle>
         <FormField label="E-mail" icon={<Mail size={16} />} placeholder="seu@email.com" type="email" value={email} onChange={setEmail} autoComplete="email" required />
+        {email.trim() !== user.email && (
+          <FormField label="Senha atual (para confirmar)" icon={<Lock size={16} />} placeholder="Sua senha atual" type="password" value={senhaEmail} onChange={setSenhaEmail} autoComplete="current-password" required />
+        )}
         <ErrorBox message={emailError} />
         <SubmitButton loading={savingEmail} disabled={email.trim() === user.email}>Atualizar e-mail</SubmitButton>
       </form>
@@ -303,8 +494,8 @@ function LoginForm({ user, onSaved }: { user: Usuario; onSaved: (u: Usuario) => 
         <FormField label="Senha atual" icon={<Lock size={16} />} placeholder="Sua senha atual" type="password" value={senhaAtual} onChange={setSenhaAtual} autoComplete="current-password" required />
         <FormField label="Nova senha" icon={<Lock size={16} />} placeholder="Mínimo 8 caracteres" type="password" value={novaSenha} onChange={setNovaSenha} autoComplete="new-password" required />
         <FormField label="Confirmar nova senha" icon={<Lock size={16} />} placeholder="Repita a nova senha" type="password" value={confirmar} onChange={setConfirmar} autoComplete="new-password" required />
-        <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '-8px' }}>
-          Use letras maiúsculas, minúsculas, números e um caractere especial.
+        <p style={{ fontSize: '11px', color: '#727272', marginTop: '-8px' }}>
+          Use letras maiúsculas, minúsculas, números e um caractere especial (até 128 caracteres; frases funcionam bem). Senhas comuns ou já vazadas na internet são recusadas. Os outros aparelhos serão desconectados.
         </p>
         <ErrorBox message={senhaError} />
         <SubmitButton loading={savingSenha}>Alterar senha</SubmitButton>
@@ -350,16 +541,16 @@ function AddressList() {
   };
 
   if (loading) {
-    return <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', padding: '60px 0' }}>Carregando endereços...</p>;
+    return <p style={{ color: '#727272', textAlign: 'center', padding: '60px 0' }}>Carregando endereços...</p>;
   }
   if (error) {
-    return <p style={{ color: '#f87171', textAlign: 'center', padding: '60px 0' }}>{error}</p>;
+    return <p style={{ color: C.danger, textAlign: 'center', padding: '60px 0' }}>{error}</p>;
   }
 
   return (
     <div className="flex flex-col gap-3">
       {enderecos.length === 0 && editing !== 'new' && (
-        <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', padding: '40px 0' }}>
+        <p style={{ color: '#727272', textAlign: 'center', padding: '40px 0' }}>
           Nenhum endereço cadastrado.
         </p>
       )}
@@ -375,16 +566,16 @@ function AddressList() {
         <div key={endereco.id} style={{ ...cardStyle, cursor: 'default', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
             width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
-            background: 'rgba(74,250,130,0.1)', color: '#4afa82',
+            background: 'rgba(244,119,11,0.1)', color: C.orange,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {endereco.zona === 'RURAL' ? <Wheat size={20} /> : <Building2 size={20} />}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '15px', fontWeight: 600, color: '#fff' }}>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: C.text }}>
               {endereco.rua}, {endereco.numero}
             </div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', marginTop: '2px' }}>
+            <div style={{ fontSize: '12px', color: '#727272', marginTop: '2px' }}>
               {endereco.bairro} · {endereco.cidade}/{endereco.uf}
               {endereco.cep ? ` · ${maskCep(endereco.cep)}` : ''} · {endereco.zona === 'RURAL' ? 'Rural' : 'Urbana'}
             </div>
@@ -405,7 +596,7 @@ function AddressList() {
           onClick={() => setEditing('new')}
           style={{
             ...cardStyle, padding: '14px', borderStyle: 'dashed',
-            color: '#4afa82', fontSize: '14px', fontWeight: 600,
+            color: C.orange, fontSize: '14px', fontWeight: 600,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
           }}
         >
@@ -477,7 +668,7 @@ function AddressForm({ initial, onCancel, onSaved }: {
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ ...cardStyle, cursor: 'default', padding: '20px', borderColor: 'rgba(74,250,130,0.35)' }} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} style={{ ...cardStyle, cursor: 'default', padding: '20px', borderColor: 'rgba(244,119,11,0.35)' }} className="flex flex-col gap-4">
       <CardTitle icon={<MapPin size={16} />}>{id === null ? 'Novo endereço' : 'Editar endereço'}</CardTitle>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField
@@ -515,11 +706,11 @@ function AddressForm({ initial, onCancel, onSaved }: {
               onClick={() => update('zona', z)}
               style={{
                 flex: 1, padding: '10px',
-                background: form.zona === z ? 'rgba(74, 250, 130, 0.12)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${form.zona === z ? 'rgba(74, 250, 130, 0.4)' : 'rgba(255,255,255,0.1)'}`,
+                background: form.zona === z ? 'rgba(244,119,11,0.12)' : 'rgba(37,37,34,0.04)',
+                border: `1px solid ${form.zona === z ? 'rgba(244,119,11,0.4)' : 'rgba(37,37,34,0.1)'}`,
                 borderRadius: '10px', cursor: 'pointer',
-                color: form.zona === z ? '#4afa82' : 'rgba(255,255,255,0.7)',
-                fontSize: '13px', fontWeight: 600, fontFamily: "'Inter', sans-serif",
+                color: form.zona === z ? C.orange : 'rgba(37,37,34,0.7)',
+                fontSize: '13px', fontWeight: 600, fontFamily: FONT,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
               }}
             >
@@ -535,7 +726,7 @@ function AddressForm({ initial, onCancel, onSaved }: {
           <SubmitButton loading={saving}>{id === null ? 'Cadastrar' : 'Salvar'}</SubmitButton>
         </div>
       </div>
-      <style>{`select option { background: #0a1c0f; color: #fff; }`}</style>
+      <style>{`select option { background: #fff; color: #252522; }`}</style>
     </form>
   );
 }
@@ -583,27 +774,27 @@ function DeleteAccountDialog({ onCancel, onDeleted }: { onCancel: () => void; on
         onClick={e => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: '440px',
-          background: 'rgba(14, 24, 16, 0.98)',
+          background: '#FFFFFF',
           border: '1px solid rgba(239,68,68,0.3)',
           borderRadius: '20px', padding: '24px',
-          boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
+          boxShadow: '0 30px 80px rgba(37,37,34,0.125)',
         }}
       >
         <div style={{
           width: '48px', height: '48px', borderRadius: '14px', marginBottom: '16px',
-          background: 'rgba(239,68,68,0.12)', color: '#f87171',
+          background: 'rgba(239,68,68,0.12)', color: C.danger,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <TriangleAlert size={24} />
         </div>
-        <h2 id="delete-account-title" style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>
+        <h2 id="delete-account-title" style={{ fontFamily: FONT, fontSize: '20px', fontWeight: 700, color: C.text, marginBottom: '8px' }}>
           Excluir sua conta?
         </h2>
-        <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.5, marginBottom: '16px' }}>
+        <p style={{ fontSize: '14px', color: '#4A4A45', lineHeight: 1.5, marginBottom: '16px' }}>
           Esta ação é permanente. Seus dados, endereços, anúncios e favoritos serão apagados e não poderão ser recuperados.
         </p>
         <label style={labelStyle}>
-          Digite <strong style={{ color: '#f87171' }}>{CONFIRM_WORD}</strong> para confirmar
+          Digite <strong style={{ color: C.danger }}>{CONFIRM_WORD}</strong> para confirmar
         </label>
         <input
           value={typed}
@@ -611,8 +802,8 @@ function DeleteAccountDialog({ onCancel, onDeleted }: { onCancel: () => void; on
           autoFocus
           style={{
             width: '100%', padding: '12px', borderRadius: '10px', outline: 'none',
-            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.3)',
-            color: '#fff', fontSize: '14px', fontFamily: "'Inter', sans-serif", marginBottom: '16px',
+            background: '#FBFAF7', border: '1px solid rgba(239,68,68,0.3)',
+            color: C.text, fontSize: '14px', fontFamily: FONT, marginBottom: '16px',
           }}
         />
         <ErrorBox message={error} />
@@ -627,7 +818,7 @@ function DeleteAccountDialog({ onCancel, onDeleted }: { onCancel: () => void; on
             style={{
               flex: 1, padding: '12px', borderRadius: '12px', border: 'none',
               background: '#dc2626', color: '#fff', fontSize: '14px', fontWeight: 700,
-              cursor: 'pointer', fontFamily: "'Inter', sans-serif",
+              cursor: 'pointer', fontFamily: FONT,
               opacity: typed.trim().toUpperCase() !== CONFIRM_WORD || deleting ? 0.4 : 1,
             }}
           >
@@ -642,33 +833,40 @@ function DeleteAccountDialog({ onCancel, onDeleted }: { onCancel: () => void; on
 // ─── Peças compartilhadas ───
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(10, 28, 15, 0.8)',
+  background: '#FFFFFF',
   borderWidth: '1px',
   borderStyle: 'solid',
-  borderColor: 'rgba(74,250,130,0.12)',
+  borderColor: '#E8E5DF',
   borderRadius: '14px',
   cursor: 'pointer',
-  fontFamily: "'Inter', sans-serif",
+  fontFamily: FONT,
 };
 
 const backButtonStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(74,250,130,0.15)',
+  background: '#FBFAF7',
+  border: '1px solid #E8E5DF',
   borderRadius: '10px', padding: '8px 16px',
-  color: 'rgba(255,255,255,0.7)', fontSize: '13px',
+  color: '#4A4A45', fontSize: '13px',
   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
   padding: '12px', borderRadius: '12px',
-  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-  color: 'rgba(255,255,255,0.8)', fontSize: '14px', fontWeight: 600,
-  cursor: 'pointer', fontFamily: "'Inter', sans-serif",
+  background: '#FBFAF7', border: '1px solid #E8E5DF',
+  color: '#4A4A45', fontSize: '14px', fontWeight: 600,
+  cursor: 'pointer', fontFamily: FONT,
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  padding: '10px 16px', borderRadius: '10px',
+  background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)',
+  color: '#dc2626', fontSize: '14px', fontWeight: 600,
+  cursor: 'pointer', fontFamily: FONT,
 };
 
 function CardTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4afa82', fontSize: '14px', fontWeight: 700 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: C.orange, fontSize: '14px', fontWeight: 700 }}>
       {icon} {children}
     </div>
   );
@@ -683,10 +881,10 @@ function IconButton({ title, onClick, danger, children }: {
       title={title}
       aria-label={title}
       style={{
-        background: danger ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74,250,130,0.08)',
-        border: `1px solid ${danger ? 'rgba(239,68,68,0.2)' : 'rgba(74,250,130,0.2)'}`,
+        background: danger ? 'rgba(239, 68, 68, 0.1)' : 'rgba(244,119,11,0.08)',
+        border: `1px solid ${danger ? 'rgba(239,68,68,0.2)' : '#E8E5DF'}`,
         borderRadius: '8px', padding: '8px', flexShrink: 0,
-        cursor: 'pointer', color: danger ? '#f87171' : '#4afa82',
+        cursor: 'pointer', color: danger ? C.danger : C.orange,
       }}
     >
       {children}
@@ -701,7 +899,7 @@ function ErrorBox({ message }: { message: string | null }) {
       background: 'rgba(239, 68, 68, 0.1)',
       border: '1px solid rgba(239, 68, 68, 0.3)',
       borderRadius: '10px', padding: '10px 14px',
-      color: '#f87171', fontSize: '13px', lineHeight: 1.4,
+      color: C.danger, fontSize: '13px', lineHeight: 1.4,
     }}>
       {message}
     </div>
@@ -716,11 +914,11 @@ function SubmitButton({ loading, disabled, children }: { loading: boolean; disab
       disabled={off}
       style={{
         width: '100%', padding: '12px',
-        background: off ? 'rgba(74, 250, 130, 0.3)' : 'linear-gradient(135deg, #16a34a, #4afa82)',
+        background: off ? 'rgba(244,119,11,0.3)' : '#F4770B',
         border: 'none', borderRadius: '12px',
-        color: off ? 'rgba(255,255,255,0.7)' : '#000',
+        color: off ? '#4A4A45' : '#fff',
         fontSize: '14px', fontWeight: 700, cursor: off ? 'not-allowed' : 'pointer',
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: FONT,
       }}
     >
       {loading ? 'Salvando...' : children}

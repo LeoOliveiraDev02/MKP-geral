@@ -64,6 +64,10 @@ function asSystem(fn) {
 async function startServer(tag) {
   const dbName = useTempDatabase(tag);
   process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+  // Sem chamadas de rede: geocodificação (Nominatim) desligada nos testes
+  process.env.GEOCODER = 'off';
+  // Notificações ficam só no banco (sem e-mail) durante os testes
+  process.env.NOTIFY_EMAIL = 'off';
 
   // Diretório de upload exclusivo deste arquivo (execução paralela segura)
   const uploadDir = path.join(os.tmpdir(), `agrostand-uploads-${tag}-${process.pid}`);
