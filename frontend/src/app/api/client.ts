@@ -9,6 +9,8 @@
  *   nativo (Capacitor) o JWT vai em `Authorization: Bearer <jwt>`.
  */
 
+import { LIMITE_ENVIO, reduzirImagensDoForm } from './imagem';
+
 // Em dev o Vite faz proxy de /api e /uploads para o backend (vite.config.ts).
 // Em produção, defina VITE_API_URL (ex: https://api.agrostand.com/api).
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
@@ -120,7 +122,12 @@ export async function request<T = undefined>(
   let payload: BodyInit | undefined;
 
   if (body instanceof FormData) {
-    payload = body; // o browser define o boundary do multipart
+    // o browser define o boundary do multipart
+    const { form, tamanho } = await reduzirImagensDoForm(body);
+    if (tamanho > LIMITE_ENVIO) {
+      throw new ApiError(413, 'As fotos ficaram grandes demais para um envio só. Envie menos fotos de cada vez.');
+    }
+    payload = form;
   } else if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
     payload = JSON.stringify(body);

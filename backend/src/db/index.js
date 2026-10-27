@@ -96,12 +96,26 @@ async function ensureRoleAndDatabase(adminUrl) {
     // Serializa boots concorrentes (ex: testes em paralelo): ALTER ROLE simultâneo
     // falha com "tuple concurrently updated". Liberado ao fechar a conexão.
     await client.query("SELECT pg_advisory_lock(hashtext('agrostand:init'))");
-    const role = await client.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [roleName]);
-    const verb = role.rowCount ? 'ALTER' : 'CREATE';
-    await client.query(
-      `${verb} ROLE ${escapeIdentifier(roleName)} LOGIN PASSWORD ${escapeLiteral(rolePass)}
-       NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`
+    const role = await client.query(
+      'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = $1',
+      [roleName]
     );
+    if (!role.rowCount) {
+      await client.query(
+        `CREATE ROLE ${escapeIdentifier(roleName)} LOGIN PASSWORD ${escapeLiteral(rolePass)}
+         NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`
+      );
+    } else {
+      // Em Postgres gerenciado (Neon, etc.) só superuser pode reaplicar
+      // NOSUPERUSER/NOBYPASSRLS: confere os atributos e atualiza só o resto.
+      if (role.rows[0].rolsuper || role.rows[0].rolbypassrls) {
+        throw new Error(`O role ${roleName} não pode ser SUPERUSER nem BYPASSRLS (RLS seria ignorado).`);
+      }
+      await client.query(
+        `ALTER ROLE ${escapeIdentifier(roleName)} LOGIN PASSWORD ${escapeLiteral(rolePass)}
+         NOCREATEDB NOCREATEROLE`
+      );
+    }
 
     const exists = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
     if (!exists.rowCount) {

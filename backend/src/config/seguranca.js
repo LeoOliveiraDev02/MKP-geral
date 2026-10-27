@@ -120,10 +120,12 @@ function validarAmbiente() {
 
 /**
  * Pagamento simulado (comprador clica em "pagar"): ligado em dev/teste para
- * demonstração, sempre desligado em produção — lá só o webhook confirma.
+ * demonstração; em produção só com PAGAMENTO_DEMO=on — senão só o webhook confirma.
  */
 function pagamentoSimulado() {
-  if (isProduction()) return false;
+  // Em produção só com PAGAMENTO_DEMO=on, ligado de propósito para apresentações
+  // (o comprador confirma o próprio pagamento). Desligue antes de vender de verdade.
+  if (isProduction()) return process.env.PAGAMENTO_DEMO === 'on';
   return process.env.PAGAMENTO_SIMULADO !== 'off';
 }
 

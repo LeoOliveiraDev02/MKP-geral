@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Search, ShoppingCart, Heart, User, Menu, X, Sprout, Phone, ChevronDown, LayoutGrid, Bell, MessageCircle, Tag,
+  Search, ShoppingCart, Heart, User, Menu, X, Sprout, ChevronDown, LayoutGrid, Bell, MessageCircle, Tag,
   Home, ShoppingBasket, MapPin, Store,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -299,10 +299,8 @@ export function Header({
           </div>
 
           <div className="hidden xl:flex items-center gap-2 ml-auto" style={{ color: 'rgba(255,255,255,0.82)', fontSize: '13px', whiteSpace: 'nowrap' }}>
-            <Phone size={15} color={C.orange} />
-            <span>0800 123 4567</span>
-            <span style={{ color: 'rgba(255,255,255,0.35)' }}>•</span>
-            <span>Seg–Sex 8h–18h</span>
+            <MessageCircle size={15} color={C.orange} />
+            <span>Atendimento pelo chat, direto com o produtor</span>
           </div>
         </div>
       </nav>

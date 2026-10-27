@@ -16,8 +16,9 @@
 const fs = require('fs');
 const path = require('path');
 
-// Define o diretório onde os arquivos físicos de log serão salvos (raiz-do-projeto/logs)
-const logDir = path.resolve(__dirname, '../../logs');
+// Define o diretório onde os arquivos físicos de log serão salvos (raiz-do-projeto/logs).
+// LOG_DIR permite apontar para uma pasta gravável (ex: /tmp/logs na Vercel, onde o disco é só leitura).
+const logDir = process.env.LOG_DIR || path.resolve(__dirname, '../../logs');
 
 // Cria o diretório de logs caso ele ainda não exista no servidor (usa a flag recursive para evitar erros de caminhos pais)
 if (!fs.existsSync(logDir)) {

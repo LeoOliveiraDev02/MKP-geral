@@ -56,3 +56,7 @@ Thumbs.db
 backups/
 *.dump
 *.dump.enc
+
+.vercel
+.env*
+!.env.example

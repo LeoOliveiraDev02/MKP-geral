@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>AgroMundo — Apresentação</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,300;6..12,400;6..12,600;6..12,700;6..12,800;6..12,900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --laranja: #F4770B;
+    --laranja-claro: #FDBA74;
+    --pessego: #FFE1C2;
+    --grafite: #252522;
+    --texto: #252522;
+    --suave: #4A4A45;
+  }
+  @page { size: 960px 540px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #d9d6d0; }
+  body { font-family: 'Nunito Sans', 'Segoe UI', sans-serif; color: var(--texto); }
+
+  .slide {
+    width: 960px; height: 540px; position: relative; overflow: hidden;
+    background: #fff; margin: 24px auto; break-after: page;
+  }
+  @media print { html, body { background: #fff; } .slide { margin: 0; } }
+
+  /* ---------- capa ---------- */
+  .capa .canto-laranja { position: absolute; right: 0; top: 0; width: 420px; height: 270px; background: var(--laranja); }
+  .capa .canto-grafite { position: absolute; right: 0; bottom: 0; width: 420px; height: 270px; background: var(--grafite); }
+  .capa .circulo { position: absolute; width: 1180px; height: 1180px; border-radius: 50%; background: #fff; left: -260px; top: -320px; }
+  .capa .marca { position: absolute; left: 80px; top: 112px; width: 260px; text-align: center; }
+  .capa .icone { width: 240px; height: 240px; display: block; margin: 0 auto; filter: drop-shadow(0 10px 22px rgba(244,119,11,.28)); }
+  .capa .nome { margin-top: 22px; font-size: 46px; font-weight: 900; letter-spacing: -0.5px; }
+  .capa .nome span { color: var(--laranja); }
+  .capa .slogan { position: absolute; left: 430px; top: 196px; font-size: 34px; line-height: 1.22; font-weight: 300; }
+  .capa .slogan b { font-weight: 700; }
+  .capa .slogan b span { color: var(--laranja); }
+
+  /* ---------- faixa de título ---------- */
+  .faixa {
+    position: absolute; left: 0; top: 0; width: 100%; height: 92px; background: var(--laranja);
+    display: flex; align-items: center; justify-content: space-between; padding: 0 36px;
+    color: #fff; font-size: 32px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase;
+  }
+  .faixa small { font-size: 15px; font-weight: 700; letter-spacing: 1.5px; background: rgba(255,255,255,.18); padding: 7px 16px; border-radius: 999px; }
+
+  /* ---------- geometria da direita ---------- */
+  .geo { position: absolute; left: 686px; top: 92px; width: 274px; height: 448px; overflow: hidden; background: var(--grafite); }
+  .geo .bloco { position: absolute; left: 0; top: 0; width: 274px; height: 178px; background: var(--laranja-claro); }
+  .geo .tri { position: absolute; right: 0; top: 0; width: 0; height: 0;
+    border-top: 178px solid var(--pessego); border-left: 196px solid transparent; }
+  .geo .quarto { position: absolute; width: 548px; height: 548px; border-radius: 50%; background: var(--laranja); right: -274px; top: -96px; z-index: 0; }
+  .geo .bloco, .geo .tri { z-index: 1; }
+  .geo { z-index: 0; }
+  .telas, .conteudo { z-index: 1; }
+
+  .conteudo { position: absolute; left: 36px; top: 128px; width: 610px; }
+  h2 { font-size: 36px; font-weight: 800; line-height: 1.15; margin-bottom: 34px; }
+  .itens { list-style: none; }
+  .itens li { font-size: 23px; line-height: 1.35; font-weight: 400; padding-left: 26px; position: relative; margin-bottom: 30px; color: var(--suave); }
+  .itens li::before { content: '➢'; position: absolute; left: 0; top: 0; color: var(--texto); font-size: 18px; line-height: 1.6; }
+  .itens li b { color: var(--texto); font-weight: 700; }
+  .paragrafo { font-size: 25px; line-height: 1.6; font-weight: 400; color: var(--suave); text-align: justify; margin-top: -4px; }
+
+  /* ---------- como funciona ---------- */
+  .passos { display: flex; flex-direction: column; gap: 22px; }
+  .passo { display: flex; gap: 20px; align-items: flex-start; }
+  .passo .n { flex: none; width: 52px; height: 52px; border-radius: 50%; background: var(--laranja); color: #fff; font-size: 24px; font-weight: 900; display: grid; place-items: center; }
+  .passo h3 { font-size: 21px; font-weight: 800; margin-bottom: 3px; }
+  .passo p { font-size: 17.5px; line-height: 1.4; color: var(--suave); }
+
+  /* ---------- sistema ---------- */
+  .sistema .geo { opacity: 1; }
+  .telas { position: absolute; left: 0; top: 92px; width: 960px; height: 448px; display: flex; justify-content: center; gap: 26px; padding-top: 22px; }
+  .tela { width: 198px; text-align: center; }
+  .tela .moldura { width: 198px; height: 372px; border-radius: 16px; overflow: hidden; background: #fff;
+    box-shadow: 0 10px 28px rgba(37,37,34,.22), 0 0 0 1px rgba(37,37,34,.08); }
+  .tela img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+  .tela > span { display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 700; color: var(--texto);
+    background: #fff; padding: 4px 12px; border-radius: 999px; box-shadow: 0 2px 8px rgba(37,37,34,.12); }
+  .cartao { width: 198px; height: 372px; border-radius: 16px; background: var(--grafite); color: #fff; padding: 22px 20px; text-align: left;
+    box-shadow: 0 10px 28px rgba(37,37,34,.22); }
+  .cartao h4 { font-size: 19px; font-weight: 800; line-height: 1.2; margin-bottom: 14px; }
+  .cartao h4 span { color: var(--laranja); }
+  .cartao ul { list-style: none; }
+  .cartao li { font-size: 14px; line-height: 1.35; margin-bottom: 11px; padding-left: 18px; position: relative; color: rgba(255,255,255,.85); }
+  .cartao li::before { content: ''; position: absolute; left: 0; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--laranja); }
+
+  /* ---------- acesse ---------- */
+  .acesse { background: var(--laranja); color: #fff; text-align: center; }
+  .acesse .titulo { position: absolute; top: 34px; width: 100%; font-size: 32px; font-weight: 800; letter-spacing: .5px; }
+  .acesse .qr { position: absolute; left: 50%; top: 116px; transform: translateX(-50%); width: 276px; height: 276px; background: #fff; padding: 26px; border-radius: 4px; }
+  .acesse .qr img { width: 100%; height: 100%; display: block; }
+  .acesse .url { position: absolute; bottom: 52px; width: 100%; font-size: 34px; font-weight: 800; letter-spacing: .5px; }
+</style>
+</head>
+<body>
+
+<!-- 1. CAPA -->
+<section class="slide capa">
+  <div class="canto-laranja"></div>
+  <div class="canto-grafite"></div>
+  <div class="circulo"></div>
+  <div class="marca">
+    <svg class="icone" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="14" fill="#F4770B"/><g fill="#fff"><ellipse cx="21" cy="24" rx="12.5" ry="6.5" transform="rotate(36 21 24)"/><ellipse cx="43" cy="19" rx="12.5" ry="6.5" transform="rotate(-43 43 19)"/><rect x="29.8" y="26" width="4.4" height="26"/><rect x="18" y="50.5" width="28" height="4"/></g></svg>
+    <div class="nome">Agro<span>Mundo</span></div>
+  </div>
+  <p class="slogan">Do produtor rural<br>direto para você,<br><b>conectando o campo<br>à <span>sua mesa</span>.</b></p>
+</section>
+
+<!-- 2. PROBLEMA -->
+<section class="slide">
+  <div class="faixa">O problema</div>
+  <div class="geo"><div class="bloco"></div><div class="tri"></div><div class="quarto"></div></div>
+  <div class="conteudo">
+    <h2>O campo longe da mesa</h2>
+    <ul class="itens">
+      <li><b>Atravessadores demais:</b> o produtor ganha pouco e o comprador paga mais caro</li>
+      <li><b>Produtor invisível:</b> sem vitrine online, vende só para quem já conhece</li>
+      <li><b>Compra no escuro:</b> sem avaliações, procedência ou garantia do pedido</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 3. SOLUÇÃO -->
+<section class="slide">
+  <div class="faixa">A solução</div>
+  <div class="geo"><div class="bloco"></div><div class="tri"></div><div class="quarto"></div></div>
+  <div class="conteudo">
+    <h2>O campo inteiro em um só lugar.</h2>
+    <p class="paragrafo">Um marketplace que aproxima produtores rurais e compradores: vitrine, ofertas, pedidos, pagamento, entrega ou retirada, chat e avaliações, no celular ou no computador.</p>
+  </div>
+</section>
+
+<!-- 4. COMO FUNCIONA -->
+<section class="slide">
+  <div class="faixa">Como funciona</div>
+  <div class="geo"><div class="bloco"></div><div class="tri"></div><div class="quarto"></div></div>
+  <div class="conteudo" style="top:124px">
+    <div class="passos">
+      <div class="passo"><div class="n">1</div><div><h3>O produtor anuncia</h3><p>Cadastra fotos, preço, estoque e formas de entrega. Sem mensalidade.</p></div></div>
+      <div class="passo"><div class="n">2</div><div><h3>O comprador encontra</h3><p>Busca por categoria, ofertas ou pelo mapa de produtores perto dele.</p></div></div>
+      <div class="passo"><div class="n">3</div><div><h3>Negociam direto</h3><p>Pedido com Pix, cartão ou boleto, chat, cotação para grandes volumes e acompanhamento da entrega.</p></div></div>
+      <div class="passo"><div class="n">4</div><div><h3>Confiança nos dois lados</h3><p>Avaliações reais, selo de produtor verificado e mediação em caso de problema.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. SISTEMA: COMPRADOR -->
+<section class="slide sistema">
+  <div class="faixa">O sistema <small>PARA QUEM COMPRA</small></div>
+  <div class="geo"><div class="bloco"></div><div class="tri"></div><div class="quarto"></div></div>
+  <div class="telas">
+    <div class="tela"><div class="moldura"><img src="telas/01-vitrine.png" alt=""></div><span>Vitrine</span></div>
+    <div class="tela"><div class="moldura"><img src="telas/04-ofertas.png" alt=""></div><span>Ofertas do campo</span></div>
+    <div class="tela"><div class="moldura"><img src="telas/02-produto.png" alt=""></div><span>Compra e frete</span></div>
+    <div class="tela"><div class="moldura"><img src="telas/03-mapa.png" alt=""></div><span>Mapa de produtores</span></div>
+  </div>
+</section>
+
+<!-- 6. SISTEMA: PRODUTOR -->
+<section class="slide sistema">
+  <div class="faixa">O sistema <small>PARA QUEM VENDE</small></div>
+  <div class="geo"><div class="bloco"></div><div class="tri"></div><div class="quarto"></div></div>
+  <div class="telas">
+    <div class="tela"><div class="moldura"><img src="telas/05-painel.png" alt=""></div><span>Painel do produtor</span></div>
+    <div class="tela"><div class="moldura"><img src="telas/06-novo-anuncio.png" alt=""></div><span>Novo anúncio</span></div>
+    <div class="tela"><div class="moldura"><img src="telas/07-pedidos.png" alt=""></div><span>Pedidos recebidos</span></div>
+    <div class="tela">
+      <div class="cartao">
+        <h4>Venda sem <span>mensalidade</span></h4>
+        <ul>
+          <li>Visitas e cliques no WhatsApp em tempo real</li>
+          <li>Cotações para grandes volumes</li>
+          <li>Cestas e produtos em oferta</li>
+          <li>Loja própria com selo de verificado</li>
+          <li>App Android e instalável no celular</li>
+        </ul>
+      </div>
+      <span>Recursos</span>
+    </div>
+  </div>
+</section>
+
+<!-- 7. ACESSE -->
+<section class="slide acesse">
+  <div class="titulo">ACESSE EM</div>
+  <div class="qr"><img src="telas/qrcode-site.svg" alt="QR code agromundo-beryl.vercel.app"></div>
+  <div class="url">agromundo-beryl.vercel.app</div>
+</section>
+
+</body>
+</html>

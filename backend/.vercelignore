@@ -1,0 +1,9 @@
+.env
+.env.*
+node_modules
+logs
+backups
+public/uploads
+database.sqlite*
+drizzle-sqlite-legado
+test

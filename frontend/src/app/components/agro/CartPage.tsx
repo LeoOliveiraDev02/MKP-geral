@@ -136,7 +136,8 @@ export function CartPage({ items, onUpdateQuantity, onRemove, onBack }: CartPage
                       >
                         <ImageWithFallback src={item.product.image} alt={item.product.name} style={imagemCover} />
                       </button>
-                      <div className="min-w-0 flex-1">
+                      {/* No celular a descrição ocupa o resto da linha e os controles descem para a linha de baixo */}
+                      <div className="min-w-0 flex-1 basis-[calc(100%-92px)] sm:basis-auto">
                         <div style={{ fontSize: '12px', color: C.brown, fontWeight: 600 }}>{item.product.category}</div>
                         <div style={{ fontSize: '15px', fontWeight: 600 }}>{item.product.name}</div>
                         <div style={{ fontSize: '13px', color: C.muted, marginTop: '2px' }}>
@@ -145,7 +146,8 @@ export function CartPage({ items, onUpdateQuantity, onRemove, onBack }: CartPage
                           {item.product.estoque !== null && <span> · {item.product.estoque} em estoque</span>}
                         </div>
                       </div>
-                      <div className="flex items-center" style={{ border: `1px solid ${C.border}`, borderRadius: '10px', height: '40px' }}>
+                      <div className="flex items-center justify-between gap-4 w-full sm:w-auto">
+                      <div className="flex items-center" style={{ border: `1px solid ${C.border}`, borderRadius: '10px', height: '40px', flexShrink: 0 }}>
                         <button aria-label="Diminuir" onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)} style={qtdBtn}>
                           <Minus size={15} />
                         </button>
@@ -159,12 +161,13 @@ export function CartPage({ items, onUpdateQuantity, onRemove, onBack }: CartPage
                           <Plus size={15} />
                         </button>
                       </div>
-                      <div style={{ minWidth: '96px', textAlign: 'right', fontWeight: 700, color: C.orange }}>
+                      <div className="ml-auto sm:ml-0" style={{ minWidth: '96px', textAlign: 'right', fontWeight: 700, color: C.orange }}>
                         {formatCurrency(unitario * item.quantity)}
                       </div>
                       <button onClick={() => onRemove(item.product.id)} aria-label="Remover do carrinho" style={{ ...botaoSecundario, padding: '8px', color: C.danger }}>
                         <Trash2 size={16} />
                       </button>
+                      </div>
                     </motion.div>
                   );
                 })}
@@ -181,7 +184,7 @@ export function CartPage({ items, onUpdateQuantity, onRemove, onBack }: CartPage
           </div>
           <div className="flex justify-between" style={{ fontSize: '14px', marginBottom: '14px' }}>
             <span style={{ color: C.muted }}>Frete</span>
-            <span style={{ color: C.muted }}>calculado no checkout</span>
+            <span style={{ color: C.muted }}>calculando frete</span>
           </div>
           <div className="flex gap-2" style={{ background: '#FBFAF7', border: `1px solid ${C.border}`, borderRadius: '10px', padding: '10px 12px', fontSize: '12.5px', color: '#4A4A45', marginBottom: '16px' }}>
             <Truck size={16} color={C.brown} style={{ flexShrink: 0, marginTop: '1px' }} />

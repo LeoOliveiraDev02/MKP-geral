@@ -52,10 +52,17 @@ class ArmazenamentoService {
       throw new Error('Formato de imagem inválido. Apenas JPG, JPEG, PNG e WEBP são permitidos.');
     }
 
-    // Em uma implementação real com AWS S3 / Google Cloud:
-    // const s3Client = new S3Client(...);
-    // await s3Client.send(new PutObjectCommand(...));
-    // return `https://meu-bucket-s3.s3.amazonaws.com/${file.filename}`;
+    // Na Vercel o disco do servidor é temporário: com BLOB_READ_WRITE_TOKEN definido,
+    // a imagem (já reprocessada pelo multer) vai para o Vercel Blob e o arquivo local é apagado.
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const { put } = require('@vercel/blob');
+      const blob = await put(`uploads/${file.filename}`, fs.readFileSync(file.path), {
+        access: 'public',
+        contentType: file.mimetype,
+      });
+      try { fs.unlinkSync(file.path); } catch { /* já removido */ }
+      return blob.url;
+    }
 
     // Configurações para gerar o link público dinamicamente para o ambiente de desenvolvimento local:
     const port = process.env.PORT || 3000;
@@ -78,6 +85,13 @@ class ArmazenamentoService {
     if (!url) return;
 
     try {
+      // Imagem guardada no Vercel Blob (produção na Vercel)
+      if (process.env.BLOB_READ_WRITE_TOKEN && /\.blob\.vercel-storage\.com\//.test(url)) {
+        const { del } = require('@vercel/blob');
+        await del(url);
+        return;
+      }
+
       // Extrai o nome do arquivo a partir da URL.
       // Exemplo: 'http://localhost:3000/uploads/imagem-12345.png' -> ['', 'imagem-12345.png']
       const parts = url.split('/uploads/');

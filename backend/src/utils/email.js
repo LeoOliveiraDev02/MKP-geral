@@ -27,6 +27,13 @@ let transporter = null;
  * 
  * @returns {Promise<Object|string>} Objeto de transporte Nodemailer ou a string 'console' para fallback.
  */
+/** Remetente: SMTP_FROM ou, no Gmail (que exige o próprio endereço), a conta do SMTP. */
+function remetente() {
+  if (process.env.SMTP_FROM) return process.env.SMTP_FROM;
+  if (process.env.SMTP_USER && process.env.SMTP_USER.includes('@')) return `"AgroMundo" <${process.env.SMTP_USER}>`;
+  return 'no-reply@agrostand.com';
+}
+
 async function getTransporter() {
   // Se o transporte já foi instanciado anteriormente, reutiliza-o (padrão Singleton)
   if (transporter) return transporter;
@@ -96,7 +103,7 @@ async function getTransporter() {
 async function sendRecoveryEmail(toEmail, recoveryCode) {
   // Define o remetente, destinatário, assunto e conteúdos (tanto texto plano quanto HTML estilizado)
   const mailOptions = {
-    from: process.env.SMTP_FROM || 'no-reply@agrostand.com',
+    from: remetente(),
     to: toEmail,
     subject: 'Recuperação de Senha - Agrostand',
     text: `Olá! Seu código de recuperação de senha é: ${recoveryCode}\nEste código expira em 15 minutos.`,
@@ -164,9 +171,11 @@ function escaparHtml(texto) {
  * de transporte da recuperação de senha; `link` aponta para o front.
  */
 async function sendNotificationEmail(toEmail, { titulo, mensagem, link }) {
+  // Contas de demonstração (domínio reservado .example) não recebem e-mail.
+  if (/\.example$/i.test(String(toEmail).trim())) return false;
   const url = link ? `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}${link}` : null;
   const mailOptions = {
-    from: process.env.SMTP_FROM || 'no-reply@agrostand.com',
+    from: remetente(),
     to: toEmail,
     subject: `${titulo} - AgroMundo`,
     text: `${titulo}

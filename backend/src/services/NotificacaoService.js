@@ -12,6 +12,7 @@ const NotificacaoDAO = require('../dao/NotificacaoDAO');
 const UsuarioDAO = require('../dao/UsuarioDAO');
 const { runAsSystem } = require('../db/context');
 const { sendNotificationEmail } = require('../utils/email');
+const { emSegundoPlano } = require('../utils/segundoPlano');
 const logger = require('../utils/logger');
 const { NotFoundError } = require('../errors/AppError');
 const { isTest } = require('../config/seguranca');
@@ -33,9 +34,9 @@ class NotificacaoService {
       return;
     }
     if (!emailAtivo()) return;
-    runAsSystem(() => UsuarioDAO.findById(usuarioId))
+    emSegundoPlano(runAsSystem(() => UsuarioDAO.findById(usuarioId))
       .then((u) => (u ? sendNotificationEmail(u.email, dados) : null))
-      .catch((err) => logger.warn('Falha ao enviar e-mail de notificação', { usuarioId, erro: err.message }));
+      .catch((err) => logger.warn('Falha ao enviar e-mail de notificação', { usuarioId, erro: err.message })));
   }
 
   /**
@@ -47,12 +48,12 @@ class NotificacaoService {
   static alertaSeguranca(usuarioId, { titulo, mensagem, link, emailPara } = {}) {
     const dados = { tipo: 'SEGURANCA', titulo, mensagem, link };
     const enviar = (process.env.SECURITY_EMAIL || 'on').toLowerCase() !== 'off' && !isTest();
-    runAsSystem(async () => {
+    emSegundoPlano(runAsSystem(async () => {
       await NotificacaoDAO.create({ usuarioId, ...dados });
       if (!enviar) return;
       const destino = emailPara || (await UsuarioDAO.findById(usuarioId) || {}).email;
       if (destino) await sendNotificationEmail(destino, dados);
-    }).catch((err) => logger.warn('Falha ao enviar alerta de segurança', { usuarioId, erro: err.message }));
+    }).catch((err) => logger.warn('Falha ao enviar alerta de segurança', { usuarioId, erro: err.message })));
   }
 
   static async listar({ usuarioId }) {

@@ -6,6 +6,7 @@ Monorepo do marketplace AgroStand, com front-end e back-end separados.
 |-------|----------|
 | [`backend/`](backend) | API Node.js (Drizzle ORM, PostgreSQL) |
 | [`frontend/`](frontend) | App React + Vite |
+| [`apresentacao/`](apresentacao) | Slides (HTML e PDF), telas e QR Code do site |
 
 ## Rodando localmente
 
@@ -26,3 +27,12 @@ npm run dev
 Em dev, o Vite faz proxy de `/api` para `http://localhost:3000`. Em produção, defina `VITE_API_URL` apontando para o backend publicado.
 
 Cada pasta é independente (`package.json` próprio) e pode ser publicada separadamente.
+
+## Publicação (Vercel)
+
+- Site: https://agromundo-beryl.vercel.app (projeto `agromundo`, pasta `frontend/`). O `vercel.json` repassa `/api`, `/uploads` e `/share` para a API.
+- API: https://agromundo-api.vercel.app (projeto `agromundo-api`, pasta `backend/`), função serverless em `backend/api/index.js`.
+- Banco: Postgres Neon; fotos: Vercel Blob. O schema/RLS é aplicado com `npm run db:init`, fora da Vercel.
+- Segredos de produção ficam só nas variáveis de ambiente da Vercel, nunca no repositório.
+
+Para publicar de novo: `vercel deploy --prod` dentro de cada pasta.

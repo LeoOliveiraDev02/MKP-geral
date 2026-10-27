@@ -412,7 +412,7 @@ export function HomePage({
               Quer vender na AgroMundo?
             </h2>
             <p style={{ fontSize: '16px', color: 'rgba(255,255,255,0.6)', maxWidth: '500px' }}>
-              Cadastre seus produtos e alcance milhares de compradores em todo o Brasil.
+              Cadastre seus produtos e alcance compradores da sua região.
               Sem mensalidade, sem complicação.
             </p>
             <div className="flex flex-wrap gap-3 justify-center">

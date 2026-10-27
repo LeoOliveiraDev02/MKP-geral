@@ -16,13 +16,16 @@
     "test:integration": "node --test \"test/integration/*.test.js\"",
     "db:backup": "node scripts/backup.js",
     "db:backup:test": "node scripts/testar-backup.js",
-    "audit": "npm audit --omit=dev --audit-level=moderate"
+    "audit": "npm audit --omit=dev --audit-level=moderate",
+    "db:init": "node scripts/init-db.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@vercel/blob": "^2.8.2",
+    "@vercel/functions": "^3.10.4",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

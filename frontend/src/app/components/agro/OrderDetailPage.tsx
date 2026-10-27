@@ -11,6 +11,7 @@ import {
   Card, EmptyState, Modal, PageShell, Pill, SectionTitle, StatusPedidoPill, STATUS_PEDIDO,
   botaoContorno, botaoPerigo, botaoPrimario, botaoSecundario, campo, desabilitado, formatDateTime, imagemCover, rotulo,
 } from './ui';
+import { PagamentoDemo } from './PagamentoDemo';
 import { useApp } from '../../AppContext';
 import { AvaliacaoService, ChatService, PedidoService, ReclamacaoService } from '../../api/services';
 import { getErrorMessage } from '../../api/client';
@@ -18,7 +19,7 @@ import type { ItemPedido, MotivoReclamacao, PedidoDetalhe, StatusPedido } from '
 
 const ROTULO_ACAO: Record<StatusPedido, string> = {
   AGUARDANDO_PAGAMENTO: '',
-  PAGO: 'Pagar (simulação)',
+  PAGO: 'Pagar pedido',
   EM_PREPARACAO: 'Iniciar preparo',
   ENVIADO: 'Marcar como enviado',
   PRONTO_RETIRADA: 'Pronto para retirada',
@@ -46,6 +47,7 @@ export function OrderDetailPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [modalEnvio, setModalEnvio] = useState(false);
+  const [pagando, setPagando] = useState(false);
   const [codigo, setCodigo] = useState('');
   const [avaliando, setAvaliando] = useState<ItemPedido | null>(null);
   const [reclamando, setReclamando] = useState(false);
@@ -76,6 +78,17 @@ export function OrderDetailPage() {
     } finally {
       setEnviando(false);
       setModalEnvio(false);
+    }
+  };
+
+  // Usado pela tela de pagamento: relança o erro para ela voltar ao início.
+  const pagar = async () => {
+    try {
+      setPedido(await PedidoService.alterarStatus(pedido.id, 'PAGO'));
+      app.atualizarContadores();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+      throw err;
     }
   };
 
@@ -200,7 +213,7 @@ export function OrderDetailPage() {
                 <span>Total</span><span style={{ color: C.orange }}>{formatCurrency(pedido.total)}</span>
               </div>
               <div style={{ fontSize: '12.5px', color: C.muted }}>
-                Pagamento: {{ PIX: 'Pix', CARTAO: 'Cartão', BOLETO: 'Boleto' }[pedido.forma_pagamento]} (simulado no ambiente de teste)
+                Pagamento: {{ PIX: 'Pix', CARTAO: 'Cartão', BOLETO: 'Boleto' }[pedido.forma_pagamento]} (demonstração, sem cobrança real)
               </div>
             </div>
           </Card>
@@ -220,7 +233,7 @@ export function OrderDetailPage() {
                   <button
                     key={acao}
                     disabled={enviando}
-                    onClick={() => (acao === 'ENVIADO' ? setModalEnvio(true) : executar(acao))}
+                    onClick={() => (acao === 'ENVIADO' ? setModalEnvio(true) : acao === 'PAGO' ? setPagando(true) : executar(acao))}
                     style={{ ...desabilitado(botaoPrimario, enviando), width: '100%' }}
                   >
                     {acao === 'ENTREGUE' && !vendedor ? 'Confirmar que recebi' : ROTULO_ACAO[acao]}
@@ -290,6 +303,15 @@ export function OrderDetailPage() {
           </Card>
         </div>
       </div>
+
+      <PagamentoDemo
+        aberto={pagando}
+        pedidoId={pedido.id}
+        total={pedido.total}
+        forma={pedido.forma_pagamento}
+        onFechar={() => setPagando(false)}
+        onPagar={pagar}
+      />
 
       <Modal titulo="Marcar como enviado" aberto={modalEnvio} onFechar={() => setModalEnvio(false)}>
         <label style={rotulo}>Código de rastreio (opcional)</label>

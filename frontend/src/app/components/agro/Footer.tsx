@@ -9,7 +9,7 @@ const HIGHLIGHTS = [
   { icon: Leaf, title: 'Produtos frescos', text: 'Direto do produtor' },
   { icon: Truck, title: 'Entrega e frete', text: 'Frete grátis acima de R$ 500' },
   { icon: ShieldCheck, title: 'Pagamento seguro', text: 'Pix, cartão e boleto' },
-  { icon: Headphones, title: 'Atendimento', text: '0800 123 4567 · Seg–Sex' },
+  { icon: Headphones, title: 'Atendimento', text: 'Pelo chat, direto com o produtor' },
 ];
 
 export function Footer() {

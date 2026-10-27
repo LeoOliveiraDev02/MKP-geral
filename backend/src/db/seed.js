@@ -19,8 +19,11 @@
 require('dotenv').config();
 
 // Contas demo com senha conhecida (inclusive um admin) nunca vão para produção.
-if (process.env.NODE_ENV === 'production') {
-  console.error('db:seed bloqueado em produção: cria contas demo com senhas públicas.');
+// Em produção só a vitrine é criada: o produtor demo recebe a senha forte de
+// SEED_DEMO_SENHA e as contas de cliente/admin de teste não são criadas.
+const PRODUCAO = process.env.NODE_ENV === 'production';
+if (PRODUCAO && (process.env.SEED_DEMO_SENHA || '').length < 16) {
+  console.error('db:seed em produção exige SEED_DEMO_SENHA (>= 16 caracteres): sem senhas públicas.');
   process.exit(1);
 }
 
@@ -28,8 +31,8 @@ const { hashSenha } = require('../utils/senha');
 const { Client } = require('pg');
 const { initializeDatabase, closeDatabase } = require('./index');
 
-const DEMO_EMAIL = 'produtor.demo@agrostand.com';
-const DEMO_SENHA = 'Demo@1234';
+const DEMO_EMAIL = process.env.SEED_DEMO_EMAIL || 'produtor.demo@agrostand.com';
+const DEMO_SENHA = process.env.SEED_DEMO_SENHA || 'Demo@1234';
 const CLIENTE_EMAIL = 'cliente.demo@agrostand.com';
 const CLIENTE_SENHA = 'Cliente@1234';
 const ADMIN_EMAIL = 'admin.demo@agrostand.com';
@@ -132,6 +135,8 @@ async function complementar(admin) {
       [vendedor.id, img('1488459716781-31db52582fe9')]
     );
   }
+
+  if (PRODUCAO) return;
 
   const cliente = await garantirUsuario(admin, {
     email: CLIENTE_EMAIL, senha: CLIENTE_SENHA, nome: 'Maria', sobrenome: 'Cliente', telefone: '(35) 98888-0001',
@@ -261,7 +266,7 @@ async function seed() {
       }
 
       await admin.query('COMMIT');
-      console.log(`Seed concluído: ${total} anúncios criados para ${DEMO_EMAIL} (senha: ${DEMO_SENHA}).`);
+      console.log(`Seed concluído: ${total} anúncios criados para ${DEMO_EMAIL}${PRODUCAO ? '' : ` (senha: ${DEMO_SENHA})`}.`);
       await complementar(admin);
     } catch (err) {
       await admin.query('ROLLBACK');
