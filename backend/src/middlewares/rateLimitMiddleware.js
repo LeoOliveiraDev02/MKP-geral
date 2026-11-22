@@ -14,6 +14,7 @@
 
 const { rateLimit } = require('express-rate-limit');
 const { isTest } = require('../config/seguranca');
+const PgRateLimitStore = require('./rateLimitStorePg');
 
 const MINUTO = 60 * 1000;
 
@@ -22,8 +23,9 @@ function numeroEnv(nome, padrao) {
   return Number.isFinite(v) && v > 0 ? v : padrao;
 }
 
-function criar({ janelaMs, limiteEnv, limitePadrao, mensagem }) {
+function criar({ janelaMs, limiteEnv, limitePadrao, mensagem, store }) {
   return rateLimit({
+    ...(store ? { store } : {}),
     windowMs: janelaMs,
     limit: () => numeroEnv(limiteEnv, limitePadrao),
     standardHeaders: 'draft-8',
@@ -47,6 +49,8 @@ const authLimiter = criar({
   limiteEnv: 'RATE_LIMIT_AUTH',
   limitePadrao: 20,
   mensagem: 'Muitas tentativas de acesso. Tente novamente em alguns minutos.',
+  // Contador no banco: vale para todas as instâncias da Vercel (memória não).
+  store: new PgRateLimitStore({ prefixo: 'auth' }),
 });
 
 const escritaLimiter = criar({
@@ -54,6 +58,7 @@ const escritaLimiter = criar({
   limiteEnv: 'RATE_LIMIT_ESCRITA',
   limitePadrao: 30,
   mensagem: 'Você está enviando muito rápido. Aguarde um instante.',
+  store: new PgRateLimitStore({ prefixo: 'escrita' }),
 });
 
 module.exports = { apiLimiter, authLimiter, escritaLimiter };

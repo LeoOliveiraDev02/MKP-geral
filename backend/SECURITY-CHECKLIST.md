@@ -136,6 +136,7 @@ configurar). Cada item da lista recebeu um dos estados abaixo.
 
 - ✅ 226, 228–231, 233, 234, 241–246, 248, 249 — `routes/index.js` é o inventário; listagens com teto de 50; DTOs sem hash de senha.
 - 🆕 227 — rate limit por IP ✅; por usuário fica no Cloudflare (🔧).
+- 🆕 (2026-11-22) Na Vercel cada instância tinha o próprio contador em memória, então o limite de login/cadastro/MFA e o anti-spam quase não valiam. Agora esses dois limitadores contam na tabela `LimiteTaxa` (IP gravado como hash), compartilhada entre instâncias; sem a tabela, caem para a memória. Teste: `test/integration/rate-limit-pg.test.js`.
 - 🆕 250 — timeouts: HIBP 3 s, geocodificação 8 s, consultas ao banco 15 s (`statement_timeout`), conexão ao banco 10 s.
 - 🆕 389 (relacionado) — `X-Request-Id` em toda resposta e nos logs; erros 500 devolvem o id para o suporte.
 - ⚠️ 232 — sem `/v1` no caminho.
