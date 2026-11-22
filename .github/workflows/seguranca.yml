@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+# O backend fica em backend/ (repositório com front e back juntos).
+defaults:
+  run:
+    working-directory: backend
+
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -23,6 +28,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: backend/package-lock.json
       - run: npm ci --ignore-scripts
       - name: npm audit (dependências de produção)
         run: npm audit --omit=dev --audit-level=moderate
@@ -33,7 +39,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sbom
-          path: sbom.cdx.json
+          path: backend/sbom.cdx.json
 
   segredos:
     runs-on: ubuntu-latest
@@ -66,6 +72,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm test
 

@@ -18,8 +18,21 @@ function adminEmails() {
     .filter(Boolean);
 }
 
+/** O e-mail (já normalizado) está em ADMIN_EMAILS? */
+function isAdminEmail(email) {
+  return adminEmails().includes(String(email || '').trim().toLowerCase());
+}
+
+/**
+ * Comparação ESTRITA com o e-mail gravado: só vale se ele já estiver na forma
+ * canônica (minúsculas, sem espaços). Uma conta antiga gravada como
+ * "CHEFE@x.com" — possível antes da normalização, pois o banco diferencia
+ * maiúsculas — não herda o acesso de "chefe@x.com".
+ */
 function isAdmin(user) {
-  return !!user && adminEmails().includes(String(user.email).toLowerCase());
+  if (!user || typeof user.email !== 'string') return false;
+  const email = user.email;
+  return email === email.trim().toLowerCase() && adminEmails().includes(email);
 }
 
 function mfaObrigatorio() {
@@ -44,6 +57,7 @@ function adminMiddleware(req, res, next) {
 }
 
 adminMiddleware.isAdmin = isAdmin;
+adminMiddleware.isAdminEmail = isAdminEmail;
 adminMiddleware.mfaObrigatorio = mfaObrigatorio;
 
 module.exports = adminMiddleware;

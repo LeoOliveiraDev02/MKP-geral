@@ -12,7 +12,8 @@ const NotificacaoService = require('./NotificacaoService');
 const UsuarioDAO = require('../dao/UsuarioDAO');
 const DadosPessoaisDAO = require('../dao/DadosPessoaisDAO');
 const { runAsSystem } = require('../db/context');
-const { validatePassword, validateEmail, validatePhone } = require('../utils/validadores');
+const { validatePassword, validateEmail, validatePhone, normalizeEmail } = require('../utils/validadores');
+const { isAdminEmail } = require('../middlewares/adminMiddleware');
 const logger = require('../utils/logger');
 const { reconstituirUsuario } = require('../domain/factories');
 const { BadRequestError } = require('../errors/AppError');
@@ -23,6 +24,7 @@ class UsuarioService {
    * @returns {Promise<Object>} usuário atualizado (público).
    */
   static async updateProfile({ userId, userPublic, nome, sobrenome, email, telefone, senhaAtual, ip }) {
+    email = normalizeEmail(email);
     if (!nome || !sobrenome || !email || !telefone) {
       throw new BadRequestError('Todos os campos (nome, sobrenome, email, telefone) devem ser preenchidos.');
     }
@@ -39,6 +41,13 @@ class UsuarioService {
     // RLS: precisa enxergar contas de terceiros para checar unicidade
     const userWithEmail = await runAsSystem(() => UsuarioDAO.findByEmail(email));
     if (userWithEmail && userWithEmail.id !== userId) {
+      throw new BadRequestError('O e-mail informado já está em uso por outro usuário.');
+    }
+
+    // Ninguém passa a usar um e-mail de ADMIN_EMAILS pelo perfil (nem trocando
+    // só maiúsculas de uma conta antiga): quem tem o e-mail vira admin, e a troca
+    // não confirma a posse do endereço. Só mantém quem já está gravado assim.
+    if (isAdminEmail(email) && email !== userPublic.email) {
       throw new BadRequestError('O e-mail informado já está em uso por outro usuário.');
     }
 

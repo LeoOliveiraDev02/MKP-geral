@@ -165,7 +165,23 @@ function stubEmail() {
   };
 }
 
+/**
+ * Cria a conta de um e-mail de ADMIN_EMAILS. O cadastro público recusa esses
+ * e-mails (quem tem o e-mail vira admin); nos testes a conta é criada com a
+ * lista vazia por um instante, como se já existisse antes de virar admin.
+ */
+async function comoContaDeAdmin(fn) {
+  const lista = process.env.ADMIN_EMAILS;
+  process.env.ADMIN_EMAILS = '';
+  try {
+    return await fn();
+  } finally {
+    process.env.ADMIN_EMAILS = lista;
+  }
+}
+
 module.exports = {
+  comoContaDeAdmin,
   startServer,
   asSystem,
   api,

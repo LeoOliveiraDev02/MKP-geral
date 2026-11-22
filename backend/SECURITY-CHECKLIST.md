@@ -86,6 +86,7 @@ configurar). Cada item da lista recebeu um dos estados abaixo.
 
 - ✅ 116–124, 126, 128, 130, 132, 133 — checagem por recurso nos services + RLS no PostgreSQL; schemas descartam campos extras.
 - 🆕 134 — além das ações de admin, falhas 401/403 agora também vão para `logs/audit.log`.
+- 🆕 (2026-11-22) **Escalada para admin pelo e-mail corrigida.** O banco diferenciava maiúsculas no e-mail, mas a checagem de admin não: quem se cadastrasse como `CHEFE@x.com` virava admin de `chefe@x.com` (e ativava o próprio MFA). Também dava para cadastrar, ou trocar no perfil, um e-mail de `ADMIN_EMAILS` que ainda não tinha conta. Agora: e-mails são gravados e buscados em minúsculas; o admin compara o e-mail gravado de forma estrita; cadastro e troca de e-mail recusam endereços de `ADMIN_EMAILS` (a conta de admin nasce pelo login com Google ou direto no banco); variar maiúsculas não zera o bloqueio por tentativas. `npm run db:init` converte os e-mails antigos e lista colisões para revisão. Testes em `test/integration/admin-email.test.js`.
 - ⚠️ 125 — IDs numéricos sequenciais nas URLs; mitigado por autorização + RLS (trocar por UUID é migração grande).
 - ⚠️ 127 — admin com MFA ✅; restrição por IP/VPN é 🔧 (regra no Cloudflare para `/api/admin/*`).
 - ➖ 129, 131 — não é multi-tenant; não há WebSocket/GraphQL.
@@ -135,6 +136,7 @@ configurar). Cada item da lista recebeu um dos estados abaixo.
 
 - ✅ 226, 228–231, 233, 234, 241–246, 248, 249 — `routes/index.js` é o inventário; listagens com teto de 50; DTOs sem hash de senha.
 - 🆕 227 — rate limit por IP ✅; por usuário fica no Cloudflare (🔧).
+- 🆕 (2026-11-22) Na Vercel cada instância tinha o próprio contador em memória, então o limite de login/cadastro/MFA e o anti-spam quase não valiam. Agora esses dois limitadores contam na tabela `LimiteTaxa` (IP gravado como hash), compartilhada entre instâncias; sem a tabela, caem para a memória. Teste: `test/integration/rate-limit-pg.test.js`.
 - 🆕 250 — timeouts: HIBP 3 s, geocodificação 8 s, consultas ao banco 15 s (`statement_timeout`), conexão ao banco 10 s.
 - 🆕 389 (relacionado) — `X-Request-Id` em toda resposta e nos logs; erros 500 devolvem o id para o suporte.
 - ⚠️ 232 — sem `/v1` no caminho.

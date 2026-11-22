@@ -13,7 +13,7 @@ process.env.CORS_ORIGINS = 'https://agromundo.test';
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { startServer, api, pngFile, snapshotUploads, cleanUploads } = require('../helpers');
+const { startServer, api, pngFile, snapshotUploads, cleanUploads, comoContaDeAdmin } = require('../helpers');
 
 const SENHA = 'Forte@123';
 
@@ -230,7 +230,7 @@ describe('Hardening de segurança', async () => {
       const totp = require('../../src/utils/totp');
       process.env.ADMIN_MFA = 'on';
       try {
-        let admin = await registrar(base, 'chefe@test.com', '35911110009');
+        let admin = await comoContaDeAdmin(() => registrar(base, 'chefe@test.com', '35911110009'));
         const barrado = await api(base, 'GET', '/api/admin/verifications', { token: admin });
         assert.equal(barrado.status, 403);
         assert.equal(barrado.body.code, 'MFA_REQUIRED');
