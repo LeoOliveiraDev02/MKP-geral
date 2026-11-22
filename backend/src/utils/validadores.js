@@ -126,7 +126,18 @@ function validateVideoUrl(url) {
   }
 }
 
+/**
+ * Forma canônica do e-mail: sem espaços nas pontas, Unicode NFC e minúsculas.
+ * Todo e-mail gravado ou buscado passa por aqui — "Ana@X.com" e "ana@x.com"
+ * são a mesma conta (e a mesma entrada de ADMIN_EMAILS).
+ */
+function normalizeEmail(email) {
+  if (email === undefined || email === null) return email;
+  return String(email).trim().normalize('NFC').toLowerCase();
+}
+
 module.exports = {
+  normalizeEmail,
   validatePassword,
   validateEmail,
   validatePhone,

@@ -12,7 +12,7 @@ process.env.ADMIN_EMAILS = 'admin-pv@test.com';
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { startServer, api, pngFile, snapshotUploads, cleanUploads } = require('../helpers');
+const { startServer, api, pngFile, snapshotUploads, cleanUploads, comoContaDeAdmin } = require('../helpers');
 
 const SENHA = 'Forte@123';
 
@@ -62,7 +62,7 @@ describe('Reputação, comunicação e comércio', async () => {
     produtor = await registrar(base, 'produtor-pv@test.com', '35911110001');
     cliente = await registrar(base, 'cliente-pv@test.com', '35911110002');
     outro = await registrar(base, 'outro-pv@test.com', '35911110003');
-    admin = await registrar(base, 'admin-pv@test.com', '35911110004');
+    admin = await comoContaDeAdmin(() => registrar(base, 'admin-pv@test.com', '35911110004'));
     const cat = (await api(base, 'GET', '/api/categories')).body.data.categorias[0].id;
     const end = (await api(base, 'GET', '/api/addresses', { token: produtor })).body.data.enderecos[0].id;
     anuncio = (await multipart(base, 'POST', '/api/ads', produtor, {

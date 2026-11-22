@@ -27,7 +27,7 @@ ${imagem ? `<meta property="og:image" content="${escapar(imagem)}">` : ''}
 </head>
 <body>
 <p>Abrindo <a href="${escapar(destino)}">${escapar(titulo)}</a>…</p>
-<script>location.replace(${JSON.stringify(destino)});</script>
+<script>location.replace(${JSON.stringify(destino).replace(/</g, "\\u003c")});</script>
 </body>
 </html>`;
 }

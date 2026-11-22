@@ -86,6 +86,7 @@ configurar). Cada item da lista recebeu um dos estados abaixo.
 
 - ✅ 116–124, 126, 128, 130, 132, 133 — checagem por recurso nos services + RLS no PostgreSQL; schemas descartam campos extras.
 - 🆕 134 — além das ações de admin, falhas 401/403 agora também vão para `logs/audit.log`.
+- 🆕 (2026-11-22) **Escalada para admin pelo e-mail corrigida.** O banco diferenciava maiúsculas no e-mail, mas a checagem de admin não: quem se cadastrasse como `CHEFE@x.com` virava admin de `chefe@x.com` (e ativava o próprio MFA). Também dava para cadastrar, ou trocar no perfil, um e-mail de `ADMIN_EMAILS` que ainda não tinha conta. Agora: e-mails são gravados e buscados em minúsculas; o admin compara o e-mail gravado de forma estrita; cadastro e troca de e-mail recusam endereços de `ADMIN_EMAILS` (a conta de admin nasce pelo login com Google ou direto no banco); variar maiúsculas não zera o bloqueio por tentativas. `npm run db:init` converte os e-mails antigos e lista colisões para revisão. Testes em `test/integration/admin-email.test.js`.
 - ⚠️ 125 — IDs numéricos sequenciais nas URLs; mitigado por autorização + RLS (trocar por UUID é migração grande).
 - ⚠️ 127 — admin com MFA ✅; restrição por IP/VPN é 🔧 (regra no Cloudflare para `/api/admin/*`).
 - ➖ 129, 131 — não é multi-tenant; não há WebSocket/GraphQL.

@@ -24,8 +24,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@vercel/blob": "^2.8.2",
-    "@vercel/functions": "^3.10.4",
+    "@vercel/blob": "^2.9.0",
+    "@vercel/functions": "^3.11.3",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
@@ -44,5 +44,8 @@
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10"
+  },
+  "overrides": {
+    "zod": "$zod"
   }
 }

@@ -32,7 +32,8 @@ const TokenRevogadoDAO = require('../dao/TokenRevogadoDAO');
 
 const { getDb, isUniqueViolation } = require('../db');
 const { runAsSystem } = require('../db/context');
-const { validatePassword, validateEmail, validatePhone } = require('../utils/validadores');
+const { validatePassword, validateEmail, validatePhone, normalizeEmail } = require('../utils/validadores');
+const { isAdminEmail } = require('../middlewares/adminMiddleware');
 const { hashToken } = require('../utils/tokens');
 const logger = require('../utils/logger');
 const { Usuario, Endereco, BloqueioLogin, reconstituirUsuario } = require('../domain/factories');
@@ -93,6 +94,7 @@ class AutenticacaoService {
    * @returns {Promise<{token: string, usuario: Object}>}
    */
   static async register({ nome, sobrenome, email, telefone, senha, rua, numero, bairro, cep, cidade, uf, zona, ip, userAgent }) {
+    email = normalizeEmail(email);
     // 1. Campos obrigatórios do usuário (RN02)
     if (!nome || !sobrenome || !email || !telefone || !senha) {
       throw new BadRequestError('Todos os campos obrigatórios de cadastro (nome, sobrenome, email, telefone, senha e endereço completo) devem ser preenchidos.');
@@ -127,8 +129,11 @@ class AutenticacaoService {
     enderecoEnt.zona = upperZona;
 
     // RN13 — e-mail único (checagem antecipada; a UNIQUE do banco é a garantia final)
+    // E-mails de administrador não podem ser criados pelo cadastro público:
+    // o cadastro não confirma o e-mail, e quem tem o e-mail vira admin.
+    // (Conta de admin nasce pelo login com Google — e-mail verificado — ou pelo banco.)
     const existingUser = await UsuarioDAO.findByEmail(email);
-    if (existingUser) {
+    if (existingUser || isAdminEmail(email)) {
       throw new BadRequestError('O e-mail informado já está cadastrado.');
     }
 
@@ -187,6 +192,8 @@ class AutenticacaoService {
    * @returns {Promise<{token: string, usuario: Object}>}
    */
   static async login({ email, senha, ip, userAgent }) {
+    // Normaliza antes do bloqueio por e-mail: trocar maiúsculas não zera as tentativas.
+    email = normalizeEmail(email);
     if (!email || !senha) {
       throw new BadRequestError('E-mail e senha são obrigatórios.');
     }
@@ -207,7 +214,7 @@ class AutenticacaoService {
     const user = await UsuarioDAO.findByEmail(email);
     const usuarioEnt = user ? reconstituirUsuario(user) : null;
     if (!usuarioEnt) compararFicticio(senha);
-    if (!usuarioEnt || !usuarioEnt.autenticar(email, senha)) {
+    if (!usuarioEnt || !usuarioEnt.autenticar(user.email, senha)) {
       bloqueio.registrarFalha({ limite, minutos });
       await BloqueioLoginDAO.salvar({
         email,
@@ -345,6 +352,7 @@ class AutenticacaoService {
    * (anti-enumeração) — o controller sempre responde o mesmo sucesso.
    */
   static async forgotPassword({ email }) {
+    email = normalizeEmail(email);
     if (!email) {
       throw new BadRequestError('O e-mail é obrigatório.');
     }
@@ -374,6 +382,7 @@ class AutenticacaoService {
 
   /** Valida o código e redefine a senha (update senha + consome código em tx). */
   static async resetPassword({ email, codigo, novaSenha, ip }) {
+    email = normalizeEmail(email);
     if (!email || !codigo || !novaSenha) {
       throw new BadRequestError('E-mail, código de verificação e nova senha são obrigatórios.');
     }

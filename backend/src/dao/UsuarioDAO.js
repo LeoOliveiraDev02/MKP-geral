@@ -12,7 +12,8 @@
  *   `UsuarioDAO.create(dados, tx)`.
  */
 
-const { eq } = require('drizzle-orm');
+const { eq, asc, sql } = require('drizzle-orm');
+const { normalizeEmail } = require('../utils/validadores');
 const { getDb } = require('../db');
 const { usuarios } = require('../db/schema');
 
@@ -41,7 +42,7 @@ class UsuarioDAO {
     const database = client || getDb();
     const [row] = await database
       .insert(usuarios)
-      .values({ nome, sobrenome, email, telefone, senhaHash })
+      .values({ nome, sobrenome, email: normalizeEmail(email), telefone, senhaHash })
       .returning({ id: usuarios.id });
     return row.id;
   }
@@ -72,7 +73,11 @@ class UsuarioDAO {
 
   static async findByEmail(email, client) {
     const database = client || getDb();
-    const [row] = await database.select().from(usuarios).where(eq(usuarios.email, email))
+    // Busca sem diferenciar maiúsculas: contas antigas podem ter sido gravadas
+    // com maiúsculas antes da normalização. Havendo duplicatas, vale a mais antiga.
+    const [row] = await database.select().from(usuarios)
+      .where(sql`lower(${usuarios.email}) = ${normalizeEmail(email)}`)
+      .orderBy(asc(usuarios.id))
       .limit(1);
     return row ? toFull(row) : row;
   }
@@ -81,7 +86,7 @@ class UsuarioDAO {
     const database = client || getDb();
     await database
       .update(usuarios)
-      .set({ nome, sobrenome, email, telefone })
+      .set({ nome, sobrenome, email: normalizeEmail(email), telefone })
       .where(eq(usuarios.id, id));
     return true;
   }

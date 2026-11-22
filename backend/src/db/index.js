@@ -131,6 +131,31 @@ async function ensureRoleAndDatabase(adminUrl) {
  * Cria banco/role/tabelas/policies se não existirem e popula categorias padrão.
  * Idempotente — seguro rodar em todo boot (preserva dados existentes).
  */
+/**
+ * E-mails passaram a ser gravados em minúsculas (ver normalizeEmail). Contas
+ * antigas com maiúsculas são convertidas aqui, exceto quando a conversão
+ * colidiria com outra conta (ex.: "ADMIN@x" criada por cima de "admin@x"):
+ * essas ficam como estão e são listadas para revisão manual — a mais antiga é
+ * a legítima, e a cópia com maiúsculas não tem acesso de administrador.
+ */
+async function normalizarEmails(admin) {
+  await admin.query('CREATE INDEX IF NOT EXISTS idx_usuario_email_lower ON "Usuario" (lower(email))');
+  await admin.query(`
+    UPDATE "Usuario" u SET email = lower(btrim(u.email))
+    WHERE u.email <> lower(btrim(u.email))
+      AND NOT EXISTS (SELECT 1 FROM "Usuario" o WHERE o.id <> u.id AND lower(btrim(o.email)) = lower(btrim(u.email)))
+  `);
+  const { rows } = await admin.query(`
+    SELECT id, email, data_cadastro FROM "Usuario" u
+    WHERE EXISTS (SELECT 1 FROM "Usuario" o WHERE o.id <> u.id AND lower(btrim(o.email)) = lower(btrim(u.email)))
+    ORDER BY lower(btrim(email)), id
+  `);
+  if (rows.length) {
+    console.warn('ATENÇÃO: contas com o mesmo e-mail em maiúsculas/minúsculas diferentes (revise; a de menor id é a original):');
+    for (const r of rows) console.warn(`  id=${r.id}  ${r.email}  (cadastro ${r.data_cadastro})`);
+  }
+}
+
 async function initializeDatabase() {
   const adminUrl = process.env.DATABASE_ADMIN_URL;
   if (adminUrl) {
@@ -160,6 +185,8 @@ async function initializeDatabase() {
             ('Outros', 'Outros produtos agrícolas e derivados artesanais')
         `);
       }
+
+      await normalizarEmails(admin);
     } finally {
       await admin.end();
     }
